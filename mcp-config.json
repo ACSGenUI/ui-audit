@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "ui-audit": {
+      "command": "node",
+      "args": ["mcp-server/src/mcp-stdio.js"],
+      "cwd": "<WORKSPACE_PATH>",
+      "env": {
+        "MCP_WORKSPACE": "<WORKSPACE_PATH>",
+        "MCP_DRY_RUN": "false"
+      }
+    }
+  }
+}

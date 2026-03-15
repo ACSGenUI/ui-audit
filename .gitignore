@@ -1,0 +1,20 @@
+node_modules/
+
+# Workspace working copies (seeded from artifacts at runtime)
+/EDS_Audit_Checklist.csv
+/metrics.csv
+
+# Browser screenshots and audit artifacts (generated at runtime)
+mcp-server/artifacts/*.png
+
+# Environment
+.env
+.env.*
+
+# IDE / Agent config
+.cursor/
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
