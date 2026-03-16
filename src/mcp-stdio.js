@@ -43,16 +43,28 @@ const server = new McpServer({
   version: '1.0.0',
 });
 
-// ── Resources (served from artifacts — clean originals) ──
+// ── Resources (served from workspace copies — artifacts are read-only masters) ──
+
+async function ensureWorkspaceCopy(templateName) {
+  const filename = config.templates[templateName];
+  const src = resolve(config.artifactsDir, filename);
+  const dest = resolve(config.workspaceDir, filename);
+  try {
+    await access(dest);
+  } catch {
+    await copyFile(src, dest);
+  }
+  return dest;
+}
 
 server.resource('checklist-template', 'audit://templates/checklist', async (uri) => {
-  const filePath = resolve(config.artifactsDir, config.templates.checklist);
+  const filePath = await ensureWorkspaceCopy('checklist');
   const content = await readFile(filePath, 'utf-8');
   return { contents: [{ uri: uri.href, mimeType: 'text/csv', text: content }] };
 });
 
 server.resource('metrics-template', 'audit://templates/metrics', async (uri) => {
-  const filePath = resolve(config.artifactsDir, config.templates.metrics);
+  const filePath = await ensureWorkspaceCopy('metrics');
   const content = await readFile(filePath, 'utf-8');
   return { contents: [{ uri: uri.href, mimeType: 'text/csv', text: content }] };
 });
