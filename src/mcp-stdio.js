@@ -73,7 +73,7 @@ server.resource('metrics-template', 'audit://templates/metrics', async (uri) => 
 
 server.prompt(
   'start-audit',
-  '16-Mar-2026/v1: Start a UI audit for the workspace codebase. Provide the running app URL.',
+  '16-Mar-2026/v2: Start a UI audit for the workspace codebase. Provide the running app URL.',
   {
     appUrl: z.string().describe('URL of the running application (e.g. http://localhost:3000)'),
     focusArea: z.string().optional().describe('Optional: focus on a specific area like "accessibility", "performance", "security", "forms", "semantics". Leave empty to audit everything.'),
