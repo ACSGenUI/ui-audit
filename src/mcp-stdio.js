@@ -73,7 +73,7 @@ server.resource('metrics-template', 'audit://templates/metrics', async (uri) => 
 
 server.prompt(
   'start-audit',
-  '16-Mar-2026/v2: Start a UI audit for the workspace codebase. Provide the running app URL.',
+  '16-Mar-2026/v3: Start a UI audit for the workspace codebase. Provide the running app URL.',
   {
     appUrl: z.string().describe('URL of the running application (e.g. http://localhost:3000)'),
     focusArea: z.string().optional().describe('Optional: focus on a specific area like "accessibility", "performance", "security", "forms", "semantics". Leave empty to audit everything.'),
@@ -99,8 +99,12 @@ ${focusLine}
 
 ## Workflow
 
-1. Call \`get-checklist-status\` to see current progress.
-2. Audit one row at a time using this loop:
+1. **Download templates to workspace first:**
+   - Call \`download-template\` with \`name: "checklist"\` to copy the checklist into the workspace.
+   - Call \`download-template\` with \`name: "metrics"\` to copy the metrics template into the workspace.
+   - Confirm both downloads succeeded before proceeding.
+2. Call \`get-checklist-status\` to see current progress.
+3. Audit one row at a time using this loop:
 
 ### For each row:
    a. Call \`read-checklist-row\` with \`mode: "next_unchecked"\` to get one row.
@@ -133,8 +137,8 @@ ${focusLine}
    f. If your audit takes a while, call \`extend-lock\` before the 10-minute expiry.
    g. If the browser tool fails, mark as "NA" with the failure reason, and move on.
 
-3. After every 10 rows, call \`get-checklist-status\` and report progress to the user.
-4. Do NOT retry failed commands more than 3 times. Mark the row "NA" and continue.
+4. After every 10 rows, call \`get-checklist-status\` and report progress to the user.
+5. Do NOT retry failed commands more than 3 times. Mark the row "NA" and continue.
 
 ## Rules
 - Process **ONE row at a time**. Never batch.
@@ -192,12 +196,15 @@ server.prompt(
 - **Running app URL:** ${appUrl}
 
 ## Steps
-1. Call \`get-checklist-status\` to see how many rows are done/pending/locked.
-2. Report the current progress to me.
-3. Call \`read-checklist-row\` with \`mode: "next_unchecked"\` to pick up from the next unprocessed row.
-4. Continue the same single-row audit workflow:
+1. **Ensure templates are in workspace:**
+   - Call \`download-template\` with \`name: "checklist"\` to ensure the checklist exists in the workspace.
+   - Call \`download-template\` with \`name: "metrics"\` to ensure the metrics template exists in the workspace.
+2. Call \`get-checklist-status\` to see how many rows are done/pending/locked.
+3. Report the current progress to me.
+4. Call \`read-checklist-row\` with \`mode: "next_unchecked"\` to pick up from the next unprocessed row.
+5. Continue the same single-row audit workflow:
    - Read one row → audit via \`run-local-audit\` or **Chrome DevTools MCP** tools → write results → discard row → next.
-5. Report progress every 10 rows.
+6. Report progress every 10 rows.
 
 ## Rules
 - ONE row at a time. No batching.
