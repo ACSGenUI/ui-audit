@@ -4,6 +4,9 @@
   "description": "MCP server for iterative single-row UI audit",
   "type": "module",
   "main": "src/index.js",
+  "bin": {
+    "ui-audit-mcp-server": "src/mcp-stdio.js"
+  },
   "scripts": {
     "start": "node src/index.js",
     "test": "node --test test/*.test.js"
