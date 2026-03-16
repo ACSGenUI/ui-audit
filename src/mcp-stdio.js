@@ -7,7 +7,6 @@ import LockManager from './lock-manager.js';
 import CsvManager from './csv-manager.js';
 import MetricsProcessor from './metrics-processor.js';
 import AuditLogger from './audit-logger.js';
-import BrowserTool from './browser-tool.js';
 import LocalAuditTool from './local-audit-tool.js';
 import { validatePayload } from './validator.js';
 import { readFile, copyFile, access, mkdir } from 'fs/promises';
@@ -37,7 +36,6 @@ const lockManager = new LockManager();
 const csvManager = new CsvManager(lockManager);
 const metricsProcessor = new MetricsProcessor(lockManager);
 const auditLogger = new AuditLogger();
-const browserTool = new BrowserTool();
 const localAuditTool = new LocalAuditTool();
 
 const server = new McpServer({
@@ -63,7 +61,7 @@ server.resource('metrics-template', 'audit://templates/metrics', async (uri) => 
 
 server.prompt(
   'start-audit',
-  '15-Mar-2026/v2: Start a UI audit for the workspace codebase. Provide the running app URL.',
+  '16-Mar-2026/v1: Start a UI audit for the workspace codebase. Provide the running app URL.',
   {
     appUrl: z.string().describe('URL of the running application (e.g. http://localhost:3000)'),
     focusArea: z.string().optional().describe('Optional: focus on a specific area like "accessibility", "performance", "security", "forms", "semantics". Leave empty to audit everything.'),
@@ -104,12 +102,14 @@ ${focusLine}
         - \`npx eslint src/ --format json\`
         - \`cat package.json\`
 
-      **"Visual Audit"** or **"Browser Audit"** → Use \`chromedevtools-audit\` with actions against \`${appUrl}\`.
+      **"Visual Audit"** or **"Browser Audit"** → Use **Chrome DevTools MCP** tools (available in your editor environment) to inspect \`${appUrl}\`.
         Examples:
-        - \`{ "type": "navigate", "url": "${appUrl}" }\`
-        - \`{ "type": "querySelectorAll", "selector": "[role='button']" }\`
-        - \`{ "type": "getAttribute", "selector": "img", "attribute": "alt" }\`
-        - \`{ "type": "screenshot", "name": "evidence-row-N.png", "fullPage": true }\`
+        - Navigate to \`${appUrl}\`
+        - Query DOM elements (e.g., \`[role='button']\`, \`img[alt]\`)
+        - Take screenshots for evidence
+        - Evaluate JavaScript expressions
+        - Inspect network requests and computed styles
+        After performing the browser audit, call \`chromedevtools-audit\` with a description to log the action.
 
       **"Both"** → Run both local and browser checks.
 
@@ -184,7 +184,7 @@ server.prompt(
 2. Report the current progress to me.
 3. Call \`read-checklist-row\` with \`mode: "next_unchecked"\` to pick up from the next unprocessed row.
 4. Continue the same single-row audit workflow:
-   - Read one row → audit via \`run-local-audit\` or \`chromedevtools-audit\` → write results → discard row → next.
+   - Read one row → audit via \`run-local-audit\` or **Chrome DevTools MCP** tools → write results → discard row → next.
 5. Report progress every 10 rows.
 
 ## Rules
@@ -321,28 +321,25 @@ server.tool(
 
 server.tool(
   'chromedevtools-audit',
-  'Run a browser-based audit using Puppeteer. Pass an array of actions: navigate, waitForSelector, getAttribute, getTextContent, click, screenshot, evaluate, querySelectorAll, getComputedStyle. Returns results and artifact paths.',
+  'Browser-based audit helper. This tool does NOT run browser actions directly — instead, use the Chrome DevTools MCP tools available in your editor environment for browser inspection. Call this tool to log the audit action for observability.',
   {
-    actions: z.array(z.object({
-      type: z.enum(['navigate', 'waitForSelector', 'getAttribute', 'getTextContent', 'click', 'screenshot', 'evaluate', 'querySelectorAll', 'getComputedStyle']),
-      url: z.string().optional(),
-      selector: z.string().optional(),
-      attribute: z.string().optional(),
-      property: z.string().optional(),
-      expression: z.string().optional(),
-      name: z.string().optional(),
-      fullPage: z.boolean().optional(),
-      timeout: z.number().optional(),
-    })),
+    description: z.string().describe('Description of the browser audit action performed via Chrome DevTools MCP'),
     rowId: z.number().optional(),
     lockId: z.string().optional(),
     template: z.string().optional(),
   },
-  async ({ actions, rowId, lockId, template }) => {
-    auditLogger.log({ action: 'tool_invoke', clientId: 'mcp-client', template, rowId, lockId, outcome: 'started', details: { tool: 'chromedevtools-audit', actionCount: actions.length } });
-    const result = await browserTool.execute(actions);
-    auditLogger.log({ action: 'tool_invoke', clientId: 'mcp-client', template, rowId, lockId, outcome: result.ok ? 'success' : 'error', details: { tool: 'chromedevtools-audit' } });
-    return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+  async ({ description, rowId, lockId, template }) => {
+    auditLogger.log({ action: 'tool_invoke', clientId: 'mcp-client', template, rowId, lockId, outcome: 'success', details: { tool: 'chromedevtools-audit', description } });
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          ok: true,
+          message: 'Use Chrome DevTools MCP tools in your editor environment for browser inspection. Available tools include navigation, DOM queries, screenshots, JavaScript evaluation, and network inspection. This tool logged the audit action for observability.',
+          logged: { description, rowId, template },
+        }),
+      }],
+    };
   }
 );
 

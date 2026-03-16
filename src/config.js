@@ -1,9 +1,18 @@
 import { resolve } from 'path';
 
+// Workspace resolution priority:
+// 1. CLI argument (node mcp-stdio.js /path/to/workspace)
+// 2. MCP_WORKSPACE environment variable
+// 3. process.cwd() — set by Cursor via the "cwd" field in mcp.json
+const workspaceArg = process.argv[2];
+const workspaceDir = resolve(
+  workspaceArg || process.env.MCP_WORKSPACE || process.cwd()
+);
+
 const config = {
   port: parseInt(process.env.MCP_PORT || '3100', 10),
   bearerToken: process.env.MCP_BEARER_TOKEN || 'dev-token',
-  workspaceDir: resolve(process.env.MCP_WORKSPACE || resolve(import.meta.dirname, '../../')),
+  workspaceDir,
   artifactsDir: resolve(process.env.MCP_ARTIFACTS || resolve(import.meta.dirname, '../artifacts')),
   lockTimeoutMs: parseInt(process.env.MCP_LOCK_TIMEOUT_MS || String(10 * 60 * 1000), 10),
   maxConcurrencyPerClient: parseInt(process.env.MCP_MAX_CONCURRENCY || '1', 10),

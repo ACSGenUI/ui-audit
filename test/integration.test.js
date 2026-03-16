@@ -34,7 +34,6 @@ describe('MCP Server Integration', () => {
 
   after(async () => {
     serverModule.lockManager.destroy();
-    await serverModule.browserTool.close();
     serverModule.server.close();
   });
 

@@ -6,7 +6,6 @@ import LockManager from './lock-manager.js';
 import CsvManager from './csv-manager.js';
 import MetricsProcessor from './metrics-processor.js';
 import AuditLogger from './audit-logger.js';
-import BrowserTool from './browser-tool.js';
 import LocalAuditTool from './local-audit-tool.js';
 import { validatePayload } from './validator.js';
 
@@ -30,7 +29,6 @@ const lockManager = new LockManager();
 const csvManager = new CsvManager(lockManager);
 const metricsProcessor = new MetricsProcessor(lockManager);
 const auditLogger = new AuditLogger();
-const browserTool = new BrowserTool();
 const localAuditTool = new LocalAuditTool();
 
 // --- Auth middleware ---
@@ -164,14 +162,15 @@ app.post('/api/locks/extend', async (req, res) => {
 
 // === AUDIT TOOLS ===
 
-// Chrome DevTools audit
+// Chrome DevTools audit (logging only — actual browser inspection via Chrome DevTools MCP)
 app.post('/api/tools/chromedevtools-audit', async (req, res) => {
-  const { actions, rowId, lockId, template } = req.body;
-  auditLogger.log({ action: 'tool_invoke', clientId: req.clientId, template, rowId, lockId, outcome: 'started', details: { tool: 'chromedevtools-audit', actionCount: actions?.length } });
-
-  const result = await browserTool.execute(actions);
-  auditLogger.log({ action: 'tool_invoke', clientId: req.clientId, template, rowId, lockId, outcome: result.ok ? 'success' : 'error', details: { tool: 'chromedevtools-audit', error: result.error } });
-  res.json(result);
+  const { description, rowId, lockId, template } = req.body;
+  auditLogger.log({ action: 'tool_invoke', clientId: req.clientId, template, rowId, lockId, outcome: 'success', details: { tool: 'chromedevtools-audit', description } });
+  res.json({
+    ok: true,
+    message: 'Use Chrome DevTools MCP tools in your editor environment for browser inspection.',
+    logged: { description, rowId, template },
+  });
 });
 
 // Local workspace audit
@@ -233,8 +232,7 @@ const server = app.listen(config.port, () => {
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   lockManager.destroy();
-  await browserTool.close();
   server.close();
 });
 
-export { app, server, lockManager, csvManager, metricsProcessor, auditLogger, browserTool };
+export { app, server, lockManager, csvManager, metricsProcessor, auditLogger };
