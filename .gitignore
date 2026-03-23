@@ -1,9 +1,5 @@
 node_modules/
 
-# Workspace working copies (seeded from artifacts at runtime)
-/EDS_Audit_Checklist.csv
-/metrics.csv
-
 # Browser screenshots and audit artifacts (generated at runtime)
 mcp-server/artifacts/*.png
 

@@ -129,7 +129,7 @@ trendSnapshot.uiQualityScore,
 trendSnapshot.accessibilityScore,
 trendSnapshot.performanceScore,
 trendSnapshot.codeQualityScore,
-trendSnapshot.securityScore
+trendSnapshot.securityScore,
 topIssues.count,
 topIssues.1.severity,
 topIssues.1.id,
