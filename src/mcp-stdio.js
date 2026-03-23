@@ -13,6 +13,10 @@ import { readFile, copyFile, access, mkdir } from 'fs/promises';
 import { resolve } from 'path';
 import config from './config.js';
 
+const { version } = JSON.parse(
+  await readFile(new URL('../package.json', import.meta.url), 'utf-8')
+);
+
 // ── Bootstrap: copy templates from artifacts → workspace on startup ──
 
 async function bootstrap() {
@@ -40,7 +44,7 @@ const localAuditTool = new LocalAuditTool();
 
 const server = new McpServer({
   name: 'ui-audit',
-  version: '1.0.0',
+  version,
 });
 
 // ── Resources (served from workspace copies — artifacts are read-only masters) ──
@@ -57,13 +61,13 @@ async function ensureWorkspaceCopy(templateName) {
   return dest;
 }
 
-server.resource('checklist-template', 'audit://templates/checklist', async (uri) => {
+server.resource('checklist-template', `audit://templates/checklist?v=${version}`, async (uri) => {
   const filePath = await ensureWorkspaceCopy('checklist');
   const content = await readFile(filePath, 'utf-8');
   return { contents: [{ uri: uri.href, mimeType: 'text/csv', text: content }] };
 });
 
-server.resource('metrics-template', 'audit://templates/metrics', async (uri) => {
+server.resource('metrics-template', `audit://templates/metrics?v=${version}`, async (uri) => {
   const filePath = await ensureWorkspaceCopy('metrics');
   const content = await readFile(filePath, 'utf-8');
   return { contents: [{ uri: uri.href, mimeType: 'text/csv', text: content }] };
