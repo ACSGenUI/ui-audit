@@ -1,17 +1,14 @@
 import { resolve, relative, isAbsolute } from 'path';
 import config from './config.js';
 
-const VALID_IMPLEMENTED = ['Yes', 'No', 'NA'];
+const VALID_IMPLEMENTED = ['Yes', 'No'];
 const URL_RE = /^https?:\/\/.+/;
 
 function normalizeImplemented(value) {
   if (!value || typeof value !== 'string') return null;
-  const v = value.trim();
-  // Case-normalize
-  const lower = v.toLowerCase();
+  const lower = value.trim().toLowerCase();
   if (lower === 'yes') return 'Yes';
   if (lower === 'no') return 'No';
-  if (lower === 'na' || lower === 'n/a') return 'NA';
   return null;
 }
 
@@ -30,7 +27,7 @@ function validatePayload(payload) {
   }
 
   // Validate Implemented?
-  const implKey = 'Implemented? (Yes / No / NA)';
+  const implKey = 'Implemented? (Yes / No)';
   if (implKey in payload) {
     const normalized = normalizeImplemented(payload[implKey]);
     if (!normalized) {

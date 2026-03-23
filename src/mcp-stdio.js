@@ -5,19 +5,13 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import LockManager from './lock-manager.js';
 import CsvManager from './csv-manager.js';
-import MetricsProcessor from './metrics-processor.js';
-import AuditLogger from './audit-logger.js';
 import LocalAuditTool from './local-audit-tool.js';
 import { validatePayload } from './validator.js';
 import { readFile, copyFile, access, mkdir } from 'fs/promises';
 import { resolve } from 'path';
 import config from './config.js';
 
-const { version } = JSON.parse(
-  await readFile(new URL('../package.json', import.meta.url), 'utf-8')
-);
-
-// ── Bootstrap: copy templates from artifacts → workspace on startup ──
+// ── Bootstrap: copy template from artifacts → workspace on startup ──
 
 async function bootstrap() {
   await mkdir(config.workspaceDir, { recursive: true });
@@ -26,9 +20,7 @@ async function bootstrap() {
     const dest = resolve(config.workspaceDir, filename);
     try {
       await access(dest);
-      // Workspace copy already exists — leave it (may have in-progress audit data)
     } catch {
-      // No workspace copy yet — seed from artifacts
       await copyFile(src, dest);
     }
   }
@@ -38,393 +30,268 @@ await bootstrap();
 
 const lockManager = new LockManager();
 const csvManager = new CsvManager(lockManager);
-const metricsProcessor = new MetricsProcessor(lockManager);
-const auditLogger = new AuditLogger();
 const localAuditTool = new LocalAuditTool();
 
 const server = new McpServer({
   name: 'ui-audit',
-  version,
+  version: '2.0.0',
 });
 
-// ── Resources (served from workspace copies — artifacts are read-only masters) ──
+// ── Resources ──
 
-async function ensureWorkspaceCopy(templateName) {
-  const filename = config.templates[templateName];
-  const src = resolve(config.artifactsDir, filename);
-  const dest = resolve(config.workspaceDir, filename);
-  try {
-    await access(dest);
-  } catch {
-    await copyFile(src, dest);
+server.registerResource(
+  'code-audit-template',
+  'audit://templates/code-audit',
+  { description: 'The code-audit checklist CSV in the current workspace.' },
+  async (uri) => {
+    const dest = resolve(config.workspaceDir, config.templates['code-audit']);
+    const content = await readFile(dest, 'utf-8');
+    return { contents: [{ uri: uri.href, mimeType: 'text/csv', text: content }] };
   }
-  return dest;
-}
+);
 
-server.resource(`checklist-template-v${version}`, `audit://templates/checklist?v=${version}`, async (uri) => {
-  const filePath = await ensureWorkspaceCopy('checklist');
-  const content = await readFile(filePath, 'utf-8');
-  return { contents: [{ uri: uri.href, mimeType: 'text/csv', text: content }] };
-});
+server.registerResource(
+  'browser-audit-template',
+  'audit://templates/browser-audit',
+  { description: 'The browser-audit checklist CSV in the current workspace.' },
+  async (uri) => {
+    const dest = resolve(config.workspaceDir, config.templates['browser-audit']);
+    const content = await readFile(dest, 'utf-8');
+    return { contents: [{ uri: uri.href, mimeType: 'text/csv', text: content }] };
+  }
+);
 
-server.resource(`metrics-template-v${version}`, `audit://templates/metrics?v=${version}`, async (uri) => {
-  const filePath = await ensureWorkspaceCopy('metrics');
-  const content = await readFile(filePath, 'utf-8');
-  return { contents: [{ uri: uri.href, mimeType: 'text/csv', text: content }] };
-});
+// ── Prompt ──
 
-// ── Prompts ──
-
-server.prompt(
-  'start-audit',
-  '16-Mar-2026/v4: Start a UI audit for the workspace codebase. Provide the running app URL.',
+server.registerPrompt(
+  'start-code-audit',
   {
-    appUrl: z.string().describe('URL of the running application (e.g. http://localhost:3000)'),
-    focusArea: z.string().optional().describe('Optional: focus on a specific area like "accessibility", "performance", "security", "forms", "semantics". Leave empty to audit everything.'),
+    description: 'Start a Code Audit against the current working directory. No input required.',
   },
-  ({ appUrl, focusArea }) => {
-    const ws = config.workspaceDir;
-    const focusLine = focusArea
-      ? `\n## Focus Area\nOnly audit rows related to **${focusArea}**. Skip rows outside this area by marking them "NA" with comment "Out of scope for focused audit".`
-      : '';
+  () => ({
+    messages: [{
+      role: 'user',
+      content: {
+        type: 'text',
+        text: `You are a UI audit agent running a **Code Audit**.
 
-    return {
-      messages: [
-        {
-          role: 'user',
-          content: {
-            type: 'text',
-            text: `You are a UI audit agent. You have access to the ui-audit MCP server tools.
-
-## Target
-- **Codebase path (workspace):** ${ws}
-- **Running app URL:** ${appUrl}
-${focusLine}
+## CRITICAL: Run to completion without stopping
+Process ALL rows in a single continuous run.
+Do NOT pause, summarise, ask questions, or wait for user input at any point.
+The audit is only complete when \`get-checklist-status\` returns \`pending: 0\`.
 
 ## Workflow
-
-1. **Download templates to workspace first:**
-   - Call \`download-template\` with \`name: "checklist"\` to copy the checklist into the workspace.
-   - Call \`download-template\` with \`name: "metrics"\` to copy the metrics template into the workspace.
-   - Confirm both downloads succeeded before proceeding.
-2. Call \`get-checklist-status\` to see current progress.
-3. Audit one row at a time using this loop:
-
-### For each row:
-   a. Call \`read-checklist-row\` with \`mode: "next_unchecked"\` to get one row.
-   b. Read the **Checklist Item**, **Audit Type**, and **Importance** fields.
-   c. Based on **Audit Type**, choose your method:
-
-      **"Code Audit"** → Use \`run-local-audit\`. Commands run inside the workspace \`${ws}\` by default.
-        Examples:
-        - \`grep -rn "tabindex" src/\`
-        - \`grep -rn "<h1" src/ | wc -l\`
-        - \`npx eslint src/ --format json\`
-        - \`cat package.json\`
-
-      **"Visual Audit"** or **"Browser Audit"** → Use **Chrome DevTools MCP** tools (available in your editor environment) to inspect \`${appUrl}\`.
-        Examples:
-        - Navigate to \`${appUrl}\`
-        - Query DOM elements (e.g., \`[role='button']\`, \`img[alt]\`)
-        - Take screenshots for evidence
-        - Evaluate JavaScript expressions
-        - Inspect network requests and computed styles
-        After performing the browser audit, call \`chromedevtools-audit\` with a description to log the action.
-
-      **"Both"** → Run both local and browser checks.
-
-   d. Call \`write-checklist-row\` with:
-      - \`implemented\`: "Yes", "No", or "NA"
-      - \`comments\`: Concise explanation of findings
-      - \`evidence\`: URL, screenshot artifact path, or source file path
-   e. **After writing, discard all row content from your context.** Do not carry forward any row data.
-   f. If your audit takes a while, call \`extend-lock\` before the 10-minute expiry.
-   g. If the browser tool fails, mark as "NA" with the failure reason, and move on.
-
-4. After every 10 rows, call \`get-checklist-status\` and report progress to the user.
-5. Do NOT retry failed commands more than 3 times. Mark the row "NA" and continue.
-
-## Rules
-- Process **ONE row at a time**. Never batch.
-- Keep responses short — structured JSON-style findings.
-- Do not accumulate past row data in your context.
-- Only write to the three allowed columns: Implemented?, Comments, Evidence.
-
-Begin now. Check the checklist status, then start auditing from the first unchecked row.`,
-          },
-        },
-      ],
-    };
-  }
-);
-
-server.prompt(
-  'audit-status',
-  'Check the current audit progress and get a summary.',
-  {},
-  () => ({
-    messages: [
-      {
-        role: 'user',
-        content: {
-          type: 'text',
-          text: `Call \`get-checklist-status\` and \`get-metrics-status\` and \`get-observability-metrics\`, then give me a concise summary of:
-- How many checklist rows are done vs pending vs locked
-- How many metrics rows are filled vs empty
-- Error rate and average audit time
-- Any issues or blockers`,
-        },
-      },
-    ],
-  })
-);
-
-server.prompt(
-  'resume-audit',
-  'Resume an interrupted audit from where it left off.',
-  {
-    appUrl: z.string().describe('URL of the running application (e.g. http://localhost:3000)'),
-  },
-  ({ appUrl }) => {
-    const ws = config.workspaceDir;
-    return {
-      messages: [
-        {
-          role: 'user',
-          content: {
-            type: 'text',
-            text: `You are a UI audit agent resuming an interrupted audit.
-
-## Target
-- **Codebase path (workspace):** ${ws}
-- **Running app URL:** ${appUrl}
-
-## Steps
-1. **Ensure templates are in workspace:**
-   - Call \`download-template\` with \`name: "checklist"\` to ensure the checklist exists in the workspace.
-   - Call \`download-template\` with \`name: "metrics"\` to ensure the metrics template exists in the workspace.
-2. Call \`get-checklist-status\` to see how many rows are done/pending/locked.
-3. Report the current progress to me.
-4. Call \`read-checklist-row\` with \`mode: "next_unchecked"\` to pick up from the next unprocessed row.
-5. Continue the same single-row audit workflow:
-   - Read one row → audit via \`run-local-audit\` or **Chrome DevTools MCP** tools → write results → discard row → next.
-6. Report progress every 10 rows.
+1. \`set-audit-workspace\` — uses the current working directory, creates a \`.ui-audit/\` folder there.
+2. \`download-template\` — seeds a fresh checklist.
+3. \`get-checklist-status\` — confirm starting row count.
+4. Loop until pending = 0:
+   a. \`read-checklist-row\` with \`mode: "next_unchecked"\`
+   b. Run \`run-local-audit\` with grep/eslint/cat commands using the cwd from step 1
+   c. \`write-checklist-row\` with the same rowId/lockId — fill \`implemented\`, \`comments\`, \`evidence\`
+   d. Discard row content from context immediately after writing.
+   e. Every 10 rows call \`get-checklist-status\` silently — do NOT report to user, continue immediately.
+5. When pending = 0, report a brief summary to the user.
 
 ## Rules
 - ONE row at a time. No batching.
-- Discard row content from context after each write.
-- If a row is locked by a previous session, skip it — it will auto-expire.
+- Only \`run-local-audit\` — no browser tools.
+- Failed commands: mark "No" with the failure reason, move on. Do NOT retry more than once.
+- Never stop mid-audit.
 
-Begin by checking status and reporting progress.`,
-          },
-        },
-      ],
-    };
-  }
+Begin immediately.`,
+      },
+    }],
+  })
+);
+
+server.registerPrompt(
+  'start-browser-audit',
+  {
+    description: 'Start a Browser Audit using Chrome DevTools. Asks for the App URL before beginning.',
+  },
+  () => ({
+    messages: [{
+      role: 'user',
+      content: {
+        type: 'text',
+        text: `You are a UI audit agent preparing to run a **Browser Audit**.
+
+**Before doing anything else**, ask the user exactly this:
+
+> "Please enter the App URL to audit (e.g. https://example.com):"
+
+Wait for their response. Once you have the URL, proceed with the full workflow below without any further pauses or questions.
+
+---
+
+## CRITICAL: Run to completion without stopping
+Process ALL rows in a single continuous run after receiving the URL.
+Do NOT pause, summarise, ask questions, or wait for user input at any point during the audit.
+The audit is only complete when \`get-checklist-status\` returns \`pending: 0\` for template \`browser-audit\`.
+
+## Workflow (after receiving the App URL)
+1. \`set-audit-workspace\` — uses the current working directory, creates a \`.ui-audit/\` folder there.
+2. \`download-template\` with \`templateName: "browser-audit"\` — seeds a fresh browser checklist.
+3. \`get-checklist-status\` with \`templateName: "browser-audit"\` — confirm starting row count.
+4. Navigate Chrome DevTools to the App URL before starting the loop.
+5. Loop until pending = 0:
+   a. \`read-checklist-row\` with \`mode: "next_unchecked"\` and \`templateName: "browser-audit"\`
+   b. Use Chrome DevTools MCP tools to inspect the page (accessibility tree, console errors, network requests, lighthouse, etc.)
+   c. \`write-checklist-row\` with the same rowId/lockId and \`templateName: "browser-audit"\` — fill \`implemented\` (Yes / No), \`comments\`, \`evidence\`
+   d. Discard row content from context immediately after writing.
+   e. Every 10 rows call \`get-checklist-status\` with \`templateName: "browser-audit"\` silently — do NOT report to user, continue immediately.
+6. When pending = 0, report a brief summary to the user.
+
+## Rules
+- ONE row at a time. No batching.
+- Use Chrome DevTools MCP tools only — no \`run-local-audit\` for browser checks.
+- \`implemented\` must be "Yes" or "No".
+- Failed inspections: mark "No" with the failure reason, move on. Do NOT retry more than once.
+- Never stop mid-audit.`,
+      },
+    }],
+  })
 );
 
 // ── Tools ──
 
-server.tool(
+server.registerTool(
+  'set-audit-workspace',
+  {
+    description: 'Set the project being audited. Creates a .ui-audit/ folder inside the project and redirects all read/write to it. Call this FIRST.',
+    inputSchema: {
+      projectPath: z.string().optional().describe('Absolute path to the project repo. Omit to use the current working directory.'),
+    },
+  },
+  async ({ projectPath }) => {
+    const base = projectPath || process.cwd();
+    const auditDir = resolve(base, '.ui-audit');
+
+    await mkdir(auditDir, { recursive: true });
+
+    for (const [, filename] of Object.entries(config.templates)) {
+      const src = resolve(config.artifactsDir, filename);
+      const dest = resolve(auditDir, filename);
+      try {
+        await access(dest);
+      } catch {
+        await copyFile(src, dest);
+      }
+    }
+
+    config.workspaceDir = auditDir;
+
+    return {
+      content: [{ type: 'text', text: JSON.stringify({ ok: true, auditDir }) }],
+    };
+  }
+);
+
+server.registerTool(
   'download-template',
-  'Download a fresh template from artifacts into the workspace (overwrites any existing workspace copy) and return path, columns, row count. Use this to reset a template to its clean state.',
-  { name: z.enum(['checklist', 'metrics']) },
-  async ({ name }) => {
-    const filename = config.templates[name];
+  {
+    description: 'Copy a fresh checklist from artifacts into the workspace, overwriting any existing file. Returns path, columns, and row count.',
+    inputSchema: {
+      templateName: z.enum(['code-audit', 'browser-audit']).optional().default('code-audit').describe('Which checklist to download. Defaults to "code-audit".'),
+    },
+  },
+  async ({ templateName = 'code-audit' }) => {
+    const filename = config.templates[templateName];
     const src = resolve(config.artifactsDir, filename);
     const dest = resolve(config.workspaceDir, filename);
     await copyFile(src, dest);
-    const result = await csvManager.download(name, 'mcp-client');
-    auditLogger.log({ action: 'download', clientId: 'mcp-client', template: name, outcome: result.ok ? 'success' : 'error', details: result });
+    const result = await csvManager.download(templateName);
     return { content: [{ type: 'text', text: JSON.stringify(result) }] };
   }
 );
 
-server.tool(
+server.registerTool(
   'read-checklist-row',
-  'Read exactly one checklist row. Use mode "next_unchecked" to get the next unprocessed row, or "by_row_id" with a rowId for a specific row. Returns fields, rowId, lockId, and lock expiry.',
   {
-    mode: z.enum(['next_unchecked', 'by_row_id']),
-    rowId: z.number().optional(),
+    description: 'Read one checklist row and acquire a lock. Returns fields, rowId, and lockId needed for write-checklist-row.',
+    inputSchema: {
+      mode: z.enum(['next_unchecked', 'by_row_id']).describe('"next_unchecked" picks the next unprocessed row; "by_row_id" fetches a specific row'),
+      rowId: z.number().optional().describe('Row index (0-based). Required when mode is "by_row_id".'),
+      templateName: z.enum(['code-audit', 'browser-audit']).optional().default('code-audit').describe('Which checklist to read from. Defaults to "code-audit".'),
+    },
   },
-  async ({ mode, rowId }) => {
-    const result = await csvManager.readRow('checklist', { mode, rowId, clientId: 'mcp-client' });
-    auditLogger.log({ action: 'read_row', clientId: 'mcp-client', template: 'checklist', rowId: result.rowId ?? rowId, lockId: result.lockId, outcome: result.ok ? 'success' : 'error' });
+  async ({ mode, rowId, templateName = 'code-audit' }) => {
+    const result = await csvManager.readRow(templateName, { mode, rowId, clientId: 'mcp-client' });
     return { content: [{ type: 'text', text: JSON.stringify(result) }] };
   }
 );
 
-server.tool(
+server.registerTool(
   'write-checklist-row',
-  'Write audit results for one checklist row. Only three columns allowed: "Implemented? (Yes / No / NA)", "Comments", "Evidence". Requires rowId and lockId from a prior read. After a successful write, DISCARD the row content from your context.',
   {
-    rowId: z.number(),
-    lockId: z.string(),
-    implemented: z.enum(['Yes', 'No', 'NA', 'yes', 'no', 'na', 'N/A', 'n/a']),
-    comments: z.string().max(2000),
-    evidence: z.string(),
-    keepLock: z.boolean().optional(),
+    description: 'Write audit results for one row. Requires rowId and lockId from read-checklist-row. Releases the lock on success.',
+    inputSchema: {
+      rowId: z.number().describe('Row index returned by read-checklist-row.'),
+      lockId: z.string().describe('Lock ID returned by read-checklist-row.'),
+      implemented: z.enum(['Yes', 'No', 'yes', 'no']).describe('Whether the checklist item is implemented.'),
+      comments: z.string().max(2000).describe('Brief explanation of the finding.'),
+      evidence: z.string().describe('URL, workspace-relative file path, or empty string.'),
+      templateName: z.enum(['code-audit', 'browser-audit']).optional().default('code-audit').describe('Which checklist to write to. Defaults to "code-audit".'),
+    },
   },
-  async ({ rowId, lockId, implemented, comments, evidence, keepLock }) => {
+  async ({ rowId, lockId, implemented, comments, evidence, templateName = 'code-audit' }) => {
     const payload = {
-      'Implemented? (Yes / No / NA)': implemented,
+      'Implemented? (Yes / No)': implemented,
       'Comments': comments,
       'Evidence': evidence,
     };
     const validation = validatePayload(payload);
     if (!validation.valid) {
-      auditLogger.log({ action: 'write_row', clientId: 'mcp-client', template: 'checklist', rowId, lockId, outcome: 'error', details: validation.errors });
       return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'VALIDATION_FAILED', errors: validation.errors }) }] };
     }
-    const result = await csvManager.writeRow('checklist', { rowId, lockId, payload: validation.payload, keepLock });
-    auditLogger.log({ action: 'write_row', clientId: 'mcp-client', template: 'checklist', rowId, lockId, outcome: result.ok ? 'success' : 'error' });
+    const result = await csvManager.writeRow(templateName, { rowId, lockId, payload: validation.payload });
     return { content: [{ type: 'text', text: JSON.stringify(result) }] };
   }
 );
 
-server.tool(
-  'read-metrics-row',
-  'Read one metrics row. Use mode "next_empty" for next unfilled row, or "by_row_id" with a rowId.',
-  {
-    mode: z.enum(['next_empty', 'by_row_id']),
-    rowId: z.number().optional(),
-  },
-  async ({ mode, rowId }) => {
-    const result = await metricsProcessor.readRow({ mode, rowId, clientId: 'mcp-client' });
-    auditLogger.log({ action: 'read_row', clientId: 'mcp-client', template: 'metrics', rowId: result.rowId ?? rowId, lockId: result.lockId, outcome: result.ok ? 'success' : 'error' });
-    return { content: [{ type: 'text', text: JSON.stringify(result) }] };
-  }
-);
-
-server.tool(
-  'write-metrics-row',
-  'Write a value to one metrics row. Requires rowId and lockId from a prior read.',
-  {
-    rowId: z.number(),
-    lockId: z.string(),
-    value: z.string(),
-    keepLock: z.boolean().optional(),
-  },
-  async ({ rowId, lockId, value, keepLock }) => {
-    const result = await metricsProcessor.writeRow({ rowId, lockId, value, keepLock });
-    auditLogger.log({ action: 'write_row', clientId: 'mcp-client', template: 'metrics', rowId, lockId, outcome: result.ok ? 'success' : 'error' });
-    return { content: [{ type: 'text', text: JSON.stringify(result) }] };
-  }
-);
-
-server.tool(
-  'unlock-row',
-  'Release a lock on a row without writing. Use if you need to abort an audit.',
-  {
-    template: z.enum(['checklist', 'metrics']),
-    rowId: z.number(),
-    lockId: z.string(),
-  },
-  async ({ template, rowId, lockId }) => {
-    const result = lockManager.release(template, rowId, lockId);
-    auditLogger.log({ action: 'unlock', clientId: 'mcp-client', template, rowId, lockId, outcome: result.ok ? 'success' : 'error' });
-    return { content: [{ type: 'text', text: JSON.stringify(result) }] };
-  }
-);
-
-server.tool(
-  'extend-lock',
-  'Extend the expiry of an active row lock (heartbeat). Call this if your audit is taking longer than 10 minutes.',
-  {
-    template: z.enum(['checklist', 'metrics']),
-    rowId: z.number(),
-    lockId: z.string(),
-  },
-  async ({ template, rowId, lockId }) => {
-    const result = lockManager.extend(template, rowId, lockId);
-    auditLogger.log({ action: 'extend_lock', clientId: 'mcp-client', template, rowId, lockId, outcome: result.ok ? 'success' : 'error' });
-    return { content: [{ type: 'text', text: JSON.stringify(result) }] };
-  }
-);
-
-server.tool(
-  'chromedevtools-audit',
-  'Browser-based audit helper. This tool does NOT run browser actions directly — instead, use the Chrome DevTools MCP tools available in your editor environment for browser inspection. Call this tool to log the audit action for observability.',
-  {
-    description: z.string().describe('Description of the browser audit action performed via Chrome DevTools MCP'),
-    rowId: z.number().optional(),
-    lockId: z.string().optional(),
-    template: z.string().optional(),
-  },
-  async ({ description, rowId, lockId, template }) => {
-    auditLogger.log({ action: 'tool_invoke', clientId: 'mcp-client', template, rowId, lockId, outcome: 'success', details: { tool: 'chromedevtools-audit', description } });
-    return {
-      content: [{
-        type: 'text',
-        text: JSON.stringify({
-          ok: true,
-          message: 'Use Chrome DevTools MCP tools in your editor environment for browser inspection. Available tools include navigation, DOM queries, screenshots, JavaScript evaluation, and network inspection. This tool logged the audit action for observability.',
-          logged: { description, rowId, template },
-        }),
-      }],
-    };
-  }
-);
-
-server.tool(
-  'run-local-audit',
-  'Run a local shell command in the workspace to audit code (e.g., lint, grep, test). Returns stdout/stderr. Command is sandboxed to the workspace directory.',
-  {
-    command: z.string(),
-    cwd: z.string().optional(),
-    timeoutMs: z.number().optional(),
-    rowId: z.number().optional(),
-    lockId: z.string().optional(),
-    template: z.string().optional(),
-  },
-  async ({ command, cwd, timeoutMs, rowId, lockId, template }) => {
-    auditLogger.log({ action: 'tool_invoke', clientId: 'mcp-client', template, rowId, lockId, outcome: 'started', details: { tool: 'run-local-audit', command } });
-    const result = await localAuditTool.execute({ command, cwd, timeoutMs });
-    auditLogger.log({ action: 'tool_invoke', clientId: 'mcp-client', template, rowId, lockId, outcome: result.ok ? 'success' : 'error', details: { tool: 'run-local-audit' } });
-    return { content: [{ type: 'text', text: JSON.stringify(result) }] };
-  }
-);
-
-server.tool(
+server.registerTool(
   'get-checklist-status',
-  'Get progress summary for the checklist: total rows, done, pending, locked.',
-  {},
-  async () => {
-    const result = await csvManager.getStatus('checklist');
-    return { content: [{ type: 'text', text: JSON.stringify(result) }] };
-  }
-);
-
-server.tool(
-  'get-metrics-status',
-  'Get progress summary for the metrics file: total rows, filled, empty, locked.',
-  {},
-  async () => {
-    const result = await metricsProcessor.getStatus();
-    return { content: [{ type: 'text', text: JSON.stringify(result) }] };
-  }
-);
-
-server.tool(
-  'get-row-logs',
-  'Fetch the audit trail (all logged actions) for a specific row.',
   {
-    template: z.enum(['checklist', 'metrics']),
-    rowId: z.number(),
+    description: 'Get current audit progress: total rows, done, pending, and locked.',
+    inputSchema: {
+      templateName: z.enum(['code-audit', 'browser-audit']).optional().default('code-audit').describe('Which checklist to check. Defaults to "code-audit".'),
+    },
   },
-  async ({ template, rowId }) => {
-    const logs = auditLogger.getLogsForRow(template, rowId);
-    return { content: [{ type: 'text', text: JSON.stringify({ ok: true, logs }) }] };
+  async ({ templateName = 'code-audit' }) => {
+    const result = await csvManager.getStatus(templateName);
+    return { content: [{ type: 'text', text: JSON.stringify(result) }] };
   }
 );
 
-server.tool(
-  'get-observability-metrics',
-  'Get server-wide observability: total actions, reads, writes, errors, lock collisions, avg audit time.',
-  {},
-  async () => {
-    const metrics = auditLogger.getMetrics();
-    return { content: [{ type: 'text', text: JSON.stringify({ ok: true, ...metrics }) }] };
+server.registerTool(
+  'unlock-row',
+  {
+    description: 'Release a lock on a row without writing. Use only when aborting a row mid-audit.',
+    inputSchema: {
+      rowId: z.number().describe('Row index to unlock.'),
+      lockId: z.string().describe('Lock ID to release.'),
+      templateName: z.enum(['code-audit', 'browser-audit']).optional().default('code-audit').describe('Which checklist the lock belongs to. Defaults to "code-audit".'),
+    },
+  },
+  async ({ rowId, lockId, templateName = 'code-audit' }) => {
+    const result = lockManager.release(templateName, rowId, lockId);
+    return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+  }
+);
+
+server.registerTool(
+  'run-local-audit',
+  {
+    description: 'Run a read-only shell command against the project repo (grep, cat, eslint, etc). Returns stdout and stderr.',
+    inputSchema: {
+      command: z.string().describe('Shell command to run.'),
+      cwd: z.string().optional().describe('Absolute path to the project being audited. Defaults to the audit workspace.'),
+      timeoutMs: z.number().optional().describe('Max execution time in milliseconds. Defaults to 60000.'),
+    },
+  },
+  async ({ command, cwd, timeoutMs }) => {
+    const result = await localAuditTool.execute({ command, cwd, timeoutMs });
+    return { content: [{ type: 'text', text: JSON.stringify(result) }] };
   }
 );
 

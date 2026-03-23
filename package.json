@@ -1,22 +1,18 @@
 {
   "name": "ui-audit-mcp-server",
-  "version": "1.0.1",
-  "description": "MCP server for iterative single-row UI audit",
+  "version": "2.0.0",
+  "description": "MCP server for iterative single-row Code Audit",
   "type": "module",
-  "main": "src/index.js",
   "bin": {
     "ui-audit-mcp-server": "src/mcp-stdio.js"
   },
   "scripts": {
-    "start": "node src/index.js",
-    "test": "node --test test/*.test.js"
+    "start": "node src/mcp-stdio.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
     "csv-parse": "^5.5.0",
     "csv-stringify": "^6.4.0",
-    "express": "^4.18.2",
-    "uuid": "^9.0.0",
     "zod": "^4.3.6"
   }
 }

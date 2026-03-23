@@ -1,6 +1,8 @@
 import { randomUUID } from 'crypto';
 import config from './config.js';
 
+const MAX_CONCURRENCY = 1; // one row at a time per client
+
 class LockManager {
   constructor() {
     this.locks = new Map();          // key: `${template}:${rowId}` → lock object
@@ -27,16 +29,14 @@ class LockManager {
       return { ok: false, error: 'ROW_LOCKED', holder: existing.clientId, expiresAt: existing.expiresAt };
     }
 
-    // Enforce per-client concurrency
     const ck = this._clientKey(template, clientId);
     const clientSet = this.clientLocks.get(ck) || new Set();
-    // Clean expired from client set
     for (const lk of clientSet) {
       const l = this.locks.get(lk);
       if (!l || l.expiresAt <= Date.now()) clientSet.delete(lk);
     }
-    if (clientSet.size >= config.maxConcurrencyPerClient) {
-      return { ok: false, error: 'CONCURRENCY_LIMIT', current: clientSet.size, max: config.maxConcurrencyPerClient };
+    if (clientSet.size >= MAX_CONCURRENCY) {
+      return { ok: false, error: 'CONCURRENCY_LIMIT', current: clientSet.size, max: MAX_CONCURRENCY };
     }
 
     const lock = {

@@ -1,5 +1,5 @@
-import { readFile, writeFile, copyFile } from 'fs/promises';
-import { resolve, basename } from 'path';
+import { readFile, writeFile } from 'fs/promises';
+import { resolve } from 'path';
 import { parse } from 'csv-parse/sync';
 import { stringify } from 'csv-stringify/sync';
 import config from './config.js';
@@ -16,19 +16,18 @@ class CsvManager {
     return resolve(config.workspaceDir, filename);
   }
 
-  async download(templateName, clientId) {
-    const srcPath = this._templatePath(templateName);
-    if (!srcPath) return { ok: false, error: 'UNKNOWN_TEMPLATE', templates: Object.keys(config.templates) };
+  async download(templateName) {
+    const filePath = this._templatePath(templateName);
+    if (!filePath) return { ok: false, error: 'UNKNOWN_TEMPLATE', templates: Object.keys(config.templates) };
 
-    const destPath = resolve(config.workspaceDir, config.templates[templateName]);
-    const content = await readFile(srcPath, 'utf-8');
+    const content = await readFile(filePath, 'utf-8');
     const records = parse(content, { columns: true, skip_empty_lines: true });
     const columns = records.length > 0 ? Object.keys(records[0]) : [];
 
     return {
       ok: true,
       template: templateName,
-      path: destPath,
+      path: filePath,
       columns,
       rowCount: records.length,
     };
@@ -51,7 +50,7 @@ class CsvManager {
     } else if (mode === 'next_unchecked') {
       targetIdx = -1;
       for (let i = 0; i < records.length; i++) {
-        const impl = (records[i]['Implemented? (Yes / No / NA)'] || '').trim();
+        const impl = (records[i]['Implemented? (Yes / No)'] || '').trim();
         if (!impl && !this.lockManager.isLocked(templateName, i)) {
           targetIdx = i;
           break;
@@ -86,7 +85,6 @@ class CsvManager {
     const lockCheck = this.lockManager.validate(templateName, rowId, lockId);
     if (!lockCheck.valid) return { ok: false, error: lockCheck.error };
 
-    // Acquire file-level mutex
     await this._acquireFileLock(filePath);
     try {
       const content = await readFile(filePath, 'utf-8');
@@ -96,7 +94,6 @@ class CsvManager {
         return { ok: false, error: 'INVALID_ROW_ID', rowId };
       }
 
-      // Only write allowed columns
       for (const col of Object.keys(payload)) {
         if (!config.allowedWriteColumns.includes(col)) {
           return { ok: false, error: 'DISALLOWED_COLUMN', column: col, allowed: config.allowedWriteColumns };
@@ -137,7 +134,7 @@ class CsvManager {
 
     let done = 0, pending = 0, locked = 0;
     for (let i = 0; i < records.length; i++) {
-      const impl = (records[i]['Implemented? (Yes / No / NA)'] || '').trim();
+      const impl = (records[i]['Implemented? (Yes / No)'] || '').trim();
       if (impl) {
         done++;
       } else if (this.lockManager.isLocked(templateName, i)) {
@@ -150,7 +147,6 @@ class CsvManager {
     return { ok: true, template: templateName, total: records.length, done, pending, locked };
   }
 
-  // Simple async mutex
   async _acquireFileLock(filePath) {
     while (this._fileLocks.get(filePath)) {
       await new Promise(r => setTimeout(r, 50));

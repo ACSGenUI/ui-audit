@@ -1,5 +1,5 @@
 import { exec } from 'child_process';
-import { resolve } from 'path';
+import { resolve, isAbsolute } from 'path';
 import config from './config.js';
 
 class LocalAuditTool {
@@ -8,14 +8,13 @@ class LocalAuditTool {
       return { ok: false, error: 'INVALID_COMMAND', message: 'command must be a non-empty string' };
     }
 
-    // Sanitize: only allow execution within workspace
-    const workDir = cwd ? resolve(config.workspaceDir, cwd) : config.workspaceDir;
-    if (!workDir.startsWith(config.workspaceDir)) {
-      return { ok: false, error: 'PATH_TRAVERSAL', message: 'cwd must be within workspace' };
-    }
+    // cwd can be an absolute path to the project being audited, or relative to workspaceDir
+    const workDir = cwd
+      ? (isAbsolute(cwd) ? cwd : resolve(config.workspaceDir, cwd))
+      : config.workspaceDir;
 
     return new Promise((resolvePromise) => {
-      const proc = exec(command, {
+      exec(command, {
         cwd: workDir,
         timeout: timeoutMs,
         maxBuffer: 1024 * 1024,
