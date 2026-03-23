@@ -87,6 +87,7 @@ The audit is only complete when \`get-checklist-status\` returns \`pending: 0\`.
 - Only \`run-local-audit\` — no browser tools.
 - Failed commands: mark "No" with the failure reason, move on. Do NOT retry more than once.
 - Never stop mid-audit.
+- **Verify every checklist item manually using grep/cat/file inspection, even when the rule is not automatically enforced by tools like ESLint or Stylelint.** Do not skip an item just because no linter covers it — read the source and judge directly.
 
 Begin immediately.`,
       },
