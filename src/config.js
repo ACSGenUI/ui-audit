@@ -12,8 +12,10 @@ const config = {
   templates: {
     'code-audit': 'EDS_Code_Audit_Checklist.csv',
     'browser-audit': 'EDS_Browser_Audit_Checklist.csv',
+    'metrics': 'EDS_Metrics.csv',
   },
   allowedWriteColumns: ['Implemented? (Yes / No)', 'Comments', 'Evidence'],
+  metricsValueColumn: 'value',
 };
 
 export default config;
