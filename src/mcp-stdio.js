@@ -11,41 +11,21 @@ import { readFile, copyFile, access, mkdir } from 'fs/promises';
 import { resolve } from 'path';
 import config from './config.js';
 
-// ── Bootstrap: copy template from artifacts → workspace on startup ──
-
-async function bootstrap() {
-  await mkdir(config.workspaceDir, { recursive: true });
-  for (const [, filename] of Object.entries(config.templates)) {
-    const src = resolve(config.artifactsDir, filename);
-    const dest = resolve(config.workspaceDir, filename);
-    try {
-      await access(dest);
-    } catch {
-      await copyFile(src, dest);
-    }
-  }
-}
-
-await bootstrap();
 
 const lockManager = new LockManager();
 const csvManager = new CsvManager(lockManager);
 const localAuditTool = new LocalAuditTool();
 
-const server = new McpServer({
-  name: 'ui-audit',
-  version: '2.0.0',
-});
+const server = new McpServer({ name: 'ui-audit', version: '1.0.0' });
 
 // ── Resources ──
 
 server.registerResource(
   'code-audit-template',
   'audit://templates/code-audit',
-  { description: 'The code-audit checklist CSV in the current workspace.' },
+  { description: 'The Code Audit checklist CSV.' },
   async (uri) => {
-    const dest = resolve(config.workspaceDir, config.templates['code-audit']);
-    const content = await readFile(dest, 'utf-8');
+    const content = await readFile(resolve(config.templatesDir, config.templates['code-audit']), 'utf-8');
     return { contents: [{ uri: uri.href, mimeType: 'text/csv', text: content }] };
   }
 );
@@ -53,15 +33,14 @@ server.registerResource(
 server.registerResource(
   'browser-audit-template',
   'audit://templates/browser-audit',
-  { description: 'The browser-audit checklist CSV in the current workspace.' },
+  { description: 'The Browser Audit checklist CSV.' },
   async (uri) => {
-    const dest = resolve(config.workspaceDir, config.templates['browser-audit']);
-    const content = await readFile(dest, 'utf-8');
+    const content = await readFile(resolve(config.templatesDir, config.templates['browser-audit']), 'utf-8');
     return { contents: [{ uri: uri.href, mimeType: 'text/csv', text: content }] };
   }
 );
 
-// ── Prompt ──
+// ── Prompts ──
 
 server.registerPrompt(
   'start-code-audit',
@@ -81,8 +60,8 @@ Do NOT pause, summarise, ask questions, or wait for user input at any point.
 The audit is only complete when \`get-checklist-status\` returns \`pending: 0\`.
 
 ## Workflow
-1. \`set-audit-workspace\` — uses the current working directory, creates a \`.ui-audit/\` folder there.
-2. \`download-template\` — seeds a fresh checklist.
+1. \`set-audit-workspace\` with \`templateName: "code-audit"\` — creates \`.ui-audit/\` in the current working directory and copies the Code Audit checklist.
+2. \`download-template\` with \`templateName: "code-audit"\` — seeds a fresh checklist.
 3. \`get-checklist-status\` — confirm starting row count.
 4. Loop until pending = 0:
    a. \`read-checklist-row\` with \`mode: "next_unchecked"\`
@@ -130,7 +109,7 @@ Do NOT pause, summarise, ask questions, or wait for user input at any point duri
 The audit is only complete when \`get-checklist-status\` returns \`pending: 0\` for template \`browser-audit\`.
 
 ## Workflow (after receiving the App URL)
-1. \`set-audit-workspace\` — uses the current working directory, creates a \`.ui-audit/\` folder there.
+1. \`set-audit-workspace\` with \`templateName: "browser-audit"\` — creates \`.ui-audit/\` in the current working directory and copies the Browser Audit checklist.
 2. \`download-template\` with \`templateName: "browser-audit"\` — seeds a fresh browser checklist.
 3. \`get-checklist-status\` with \`templateName: "browser-audit"\` — confirm starting row count.
 4. Navigate Chrome DevTools to the App URL before starting the loop.
@@ -158,31 +137,31 @@ The audit is only complete when \`get-checklist-status\` returns \`pending: 0\` 
 server.registerTool(
   'set-audit-workspace',
   {
-    description: 'Set the project being audited. Creates a .ui-audit/ folder inside the project and redirects all read/write to it. Call this FIRST.',
+    description: 'Set the project being audited. Creates a .ui-audit/ folder, copies the relevant checklist, and redirects all read/write to it. Call this FIRST.',
     inputSchema: {
+      templateName: z.enum(['code-audit', 'browser-audit']).describe('Which audit is being run: "code-audit" or "browser-audit".'),
       projectPath: z.string().optional().describe('Absolute path to the project repo. Omit to use the current working directory.'),
     },
   },
-  async ({ projectPath }) => {
+  async ({ templateName, projectPath }) => {
     const base = projectPath || process.cwd();
     const auditDir = resolve(base, '.ui-audit');
 
     await mkdir(auditDir, { recursive: true });
 
-    for (const [, filename] of Object.entries(config.templates)) {
-      const src = resolve(config.artifactsDir, filename);
-      const dest = resolve(auditDir, filename);
-      try {
-        await access(dest);
-      } catch {
-        await copyFile(src, dest);
-      }
+    const filename = config.templates[templateName];
+    const src = resolve(config.templatesDir, filename);
+    const dest = resolve(auditDir, filename);
+    try {
+      await access(dest);
+    } catch {
+      await copyFile(src, dest);
     }
 
     config.workspaceDir = auditDir;
 
     return {
-      content: [{ type: 'text', text: JSON.stringify({ ok: true, auditDir }) }],
+      content: [{ type: 'text', text: JSON.stringify({ ok: true, auditDir, template: filename }) }],
     };
   }
 );
@@ -190,14 +169,14 @@ server.registerTool(
 server.registerTool(
   'download-template',
   {
-    description: 'Copy a fresh checklist from artifacts into the workspace, overwriting any existing file. Returns path, columns, and row count.',
+    description: 'Copy a fresh checklist from templates into the workspace, overwriting any existing file. Returns path, columns, and row count.',
     inputSchema: {
-      templateName: z.enum(['code-audit', 'browser-audit']).optional().default('code-audit').describe('Which checklist to download. Defaults to "code-audit".'),
+      templateName: z.enum(['code-audit', 'browser-audit']).describe('Which checklist to download: "code-audit" or "browser-audit".'),
     },
   },
-  async ({ templateName = 'code-audit' }) => {
+  async ({ templateName }) => {
     const filename = config.templates[templateName];
-    const src = resolve(config.artifactsDir, filename);
+    const src = resolve(config.templatesDir, filename);
     const dest = resolve(config.workspaceDir, filename);
     await copyFile(src, dest);
     const result = await csvManager.download(templateName);
@@ -212,10 +191,10 @@ server.registerTool(
     inputSchema: {
       mode: z.enum(['next_unchecked', 'by_row_id']).describe('"next_unchecked" picks the next unprocessed row; "by_row_id" fetches a specific row'),
       rowId: z.number().optional().describe('Row index (0-based). Required when mode is "by_row_id".'),
-      templateName: z.enum(['code-audit', 'browser-audit']).optional().default('code-audit').describe('Which checklist to read from. Defaults to "code-audit".'),
+      templateName: z.enum(['code-audit', 'browser-audit']).describe('Which checklist to read from: "code-audit" or "browser-audit".'),
     },
   },
-  async ({ mode, rowId, templateName = 'code-audit' }) => {
+  async ({ mode, rowId, templateName }) => {
     const result = await csvManager.readRow(templateName, { mode, rowId, clientId: 'mcp-client' });
     return { content: [{ type: 'text', text: JSON.stringify(result) }] };
   }
@@ -231,10 +210,10 @@ server.registerTool(
       implemented: z.enum(['Yes', 'No', 'yes', 'no']).describe('Whether the checklist item is implemented.'),
       comments: z.string().max(2000).describe('Brief explanation of the finding.'),
       evidence: z.string().describe('URL, workspace-relative file path, or empty string.'),
-      templateName: z.enum(['code-audit', 'browser-audit']).optional().default('code-audit').describe('Which checklist to write to. Defaults to "code-audit".'),
+      templateName: z.enum(['code-audit', 'browser-audit']).describe('Which checklist to write to: "code-audit" or "browser-audit".'),
     },
   },
-  async ({ rowId, lockId, implemented, comments, evidence, templateName = 'code-audit' }) => {
+  async ({ rowId, lockId, implemented, comments, evidence, templateName }) => {
     const payload = {
       'Implemented? (Yes / No)': implemented,
       'Comments': comments,
@@ -254,10 +233,10 @@ server.registerTool(
   {
     description: 'Get current audit progress: total rows, done, pending, and locked.',
     inputSchema: {
-      templateName: z.enum(['code-audit', 'browser-audit']).optional().default('code-audit').describe('Which checklist to check. Defaults to "code-audit".'),
+      templateName: z.enum(['code-audit', 'browser-audit']).describe('Which checklist to check: "code-audit" or "browser-audit".'),
     },
   },
-  async ({ templateName = 'code-audit' }) => {
+  async ({ templateName }) => {
     const result = await csvManager.getStatus(templateName);
     return { content: [{ type: 'text', text: JSON.stringify(result) }] };
   }
@@ -270,10 +249,10 @@ server.registerTool(
     inputSchema: {
       rowId: z.number().describe('Row index to unlock.'),
       lockId: z.string().describe('Lock ID to release.'),
-      templateName: z.enum(['code-audit', 'browser-audit']).optional().default('code-audit').describe('Which checklist the lock belongs to. Defaults to "code-audit".'),
+      templateName: z.enum(['code-audit', 'browser-audit']).describe('Which checklist the lock belongs to: "code-audit" or "browser-audit".'),
     },
   },
-  async ({ rowId, lockId, templateName = 'code-audit' }) => {
+  async ({ rowId, lockId, templateName }) => {
     const result = lockManager.release(templateName, rowId, lockId);
     return { content: [{ type: 'text', text: JSON.stringify(result) }] };
   }

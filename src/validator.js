@@ -53,10 +53,7 @@ function validatePayload(payload) {
     if (typeof e !== 'string') {
       errors.push({ field: 'Evidence', message: 'Must be a string' });
     } else if (e.trim() !== '') {
-      if (URL_RE.test(e)) {
-        // valid URL
-      } else {
-        // Must be a safe workspace-relative path
+      if (!URL_RE.test(e)) {
         const resolved = isAbsolute(e) ? resolve(e) : resolve(config.workspaceDir, e);
         const rel = relative(config.workspaceDir, resolved);
         if (rel.startsWith('..') || isAbsolute(rel)) {
@@ -71,4 +68,4 @@ function validatePayload(payload) {
   return { valid: errors.length === 0, errors, payload };
 }
 
-export { validatePayload, normalizeImplemented };
+export { validatePayload };

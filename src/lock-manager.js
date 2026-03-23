@@ -5,8 +5,8 @@ const MAX_CONCURRENCY = 1; // one row at a time per client
 
 class LockManager {
   constructor() {
-    this.locks = new Map();          // key: `${template}:${rowId}` → lock object
-    this.clientLocks = new Map();    // key: `${template}:${clientId}` → Set<lockKey>
+    this.locks = new Map();       // key: `${template}:${rowId}` → lock object
+    this.clientLocks = new Map(); // key: `${template}:${clientId}` → Set<lockKey>
     this._sweepInterval = setInterval(() => this._sweep(), 30_000);
   }
 
@@ -24,7 +24,7 @@ class LockManager {
     const existing = this.locks.get(key);
     if (existing && existing.expiresAt > Date.now()) {
       if (existing.clientId === clientId) {
-        return { ok: true, lockId: existing.lockId, expiresAt: existing.expiresAt, reacquired: true };
+        return { ok: true, lockId: existing.lockId, expiresAt: existing.expiresAt };
       }
       return { ok: false, error: 'ROW_LOCKED', holder: existing.clientId, expiresAt: existing.expiresAt };
     }
@@ -44,14 +44,13 @@ class LockManager {
       template,
       rowId,
       clientId,
-      acquiredAt: Date.now(),
       expiresAt: Date.now() + config.lockTimeoutMs,
     };
     this.locks.set(key, lock);
     clientSet.add(key);
     this.clientLocks.set(ck, clientSet);
 
-    return { ok: true, lockId: lock.lockId, expiresAt: lock.expiresAt, reacquired: false };
+    return { ok: true, lockId: lock.lockId, expiresAt: lock.expiresAt };
   }
 
   validate(template, rowId, lockId) {
@@ -64,13 +63,6 @@ class LockManager {
       return { valid: false, error: 'LOCK_EXPIRED' };
     }
     return { valid: true, lock };
-  }
-
-  extend(template, rowId, lockId) {
-    const v = this.validate(template, rowId, lockId);
-    if (!v.valid) return { ok: false, error: v.error };
-    v.lock.expiresAt = Date.now() + config.lockTimeoutMs;
-    return { ok: true, expiresAt: v.lock.expiresAt };
   }
 
   release(template, rowId, lockId) {
@@ -106,10 +98,6 @@ class LockManager {
     for (const [key, lock] of this.locks) {
       if (lock.expiresAt <= now) this._release(key, lock);
     }
-  }
-
-  destroy() {
-    clearInterval(this._sweepInterval);
   }
 }
 

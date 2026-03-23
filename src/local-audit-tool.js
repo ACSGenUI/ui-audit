@@ -8,7 +8,6 @@ class LocalAuditTool {
       return { ok: false, error: 'INVALID_COMMAND', message: 'command must be a non-empty string' };
     }
 
-    // cwd can be an absolute path to the project being audited, or relative to workspaceDir
     const workDir = cwd
       ? (isAbsolute(cwd) ? cwd : resolve(config.workspaceDir, cwd))
       : config.workspaceDir;
@@ -18,7 +17,7 @@ class LocalAuditTool {
         cwd: workDir,
         timeout: timeoutMs,
         maxBuffer: 1024 * 1024,
-        env: { ...process.env, NODE_ENV: 'audit' },
+        env: process.env,
       }, (error, stdout, stderr) => {
         if (error) {
           resolvePromise({

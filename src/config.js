@@ -5,11 +5,9 @@ import { resolve } from 'path';
 const projectDir = process.cwd();
 
 const config = {
-  projectDir,
   workspaceDir: resolve(projectDir, '.ui-audit'),
-  artifactsDir: resolve(process.env.MCP_ARTIFACTS || resolve(import.meta.dirname, '../artifacts')),
+  templatesDir: resolve(process.env.MCP_TEMPLATES || resolve(import.meta.dirname, '../templates')),
   lockTimeoutMs: parseInt(process.env.MCP_LOCK_TIMEOUT_MS || String(10 * 60 * 1000), 10),
-  dryRun: process.env.MCP_DRY_RUN === 'false' ? false : process.env.MCP_DRY_RUN === 'true',
   maxCommentLength: 2000,
   templates: {
     'code-audit': 'EDS_Code_Audit_Checklist.csv',

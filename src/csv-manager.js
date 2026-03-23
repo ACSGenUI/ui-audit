@@ -66,19 +66,18 @@ class CsvManager {
     const lockResult = this.lockManager.acquire(templateName, targetIdx, clientId);
     if (!lockResult.ok) return { ok: false, error: lockResult.error, details: lockResult };
 
-    const row = records[targetIdx];
     return {
       ok: true,
       template: templateName,
       rowId: targetIdx,
       lockId: lockResult.lockId,
       lockExpiresAt: new Date(lockResult.expiresAt).toISOString(),
-      fields: row,
+      fields: records[targetIdx],
       totalRows: records.length,
     };
   }
 
-  async writeRow(templateName, { rowId, lockId, payload, keepLock = false }) {
+  async writeRow(templateName, { rowId, lockId, payload }) {
     const filePath = this._templatePath(templateName);
     if (!filePath) return { ok: false, error: 'UNKNOWN_TEMPLATE' };
 
@@ -104,22 +103,13 @@ class CsvManager {
         records[rowId][col] = val;
       }
 
-      if (!config.dryRun) {
-        const columns = Object.keys(records[0]);
-        const csv = stringify(records, { header: true, columns });
-        await writeFile(filePath, csv, 'utf-8');
-      }
+      const columns = Object.keys(records[0]);
+      const csv = stringify(records, { header: true, columns });
+      await writeFile(filePath, csv, 'utf-8');
 
-      if (!keepLock) {
-        this.lockManager.release(templateName, rowId, lockId);
-      }
+      this.lockManager.release(templateName, rowId, lockId);
 
-      return {
-        ok: true,
-        rowId,
-        persisted: !config.dryRun,
-        unlocked: !keepLock,
-      };
+      return { ok: true, rowId };
     } finally {
       this._releaseFileLock(filePath);
     }
