@@ -61,13 +61,13 @@ async function ensureWorkspaceCopy(templateName) {
   return dest;
 }
 
-server.resource('checklist-template', `audit://templates/checklist?v=${version}`, async (uri) => {
+server.resource(`checklist-template-v${version}`, `audit://templates/checklist?v=${version}`, async (uri) => {
   const filePath = await ensureWorkspaceCopy('checklist');
   const content = await readFile(filePath, 'utf-8');
   return { contents: [{ uri: uri.href, mimeType: 'text/csv', text: content }] };
 });
 
-server.resource('metrics-template', `audit://templates/metrics?v=${version}`, async (uri) => {
+server.resource(`metrics-template-v${version}`, `audit://templates/metrics?v=${version}`, async (uri) => {
   const filePath = await ensureWorkspaceCopy('metrics');
   const content = await readFile(filePath, 'utf-8');
   return { contents: [{ uri: uri.href, mimeType: 'text/csv', text: content }] };
