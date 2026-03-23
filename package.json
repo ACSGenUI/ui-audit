@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "MCP server for Code Audit and Browser Audit",
   "type": "module",
+  "bin": {
+    "ui-audit-mcp-server": "src/mcp-stdio.js"
+  },
   "scripts": {
     "start": "node src/mcp-stdio.js"
   },
