@@ -11,10 +11,15 @@
       if (v === "light" || v === "dark") document.documentElement.setAttribute("data-theme", v);
     })();
   </script>
+  <link rel="stylesheet" href="../progen-craft/design-system/progen-craft-design-system.css" />
   <link rel="stylesheet" href="audit-dashboard.css" />
 </head>
 <body>
-  <article class="card" id="dashboard">
+  <article
+    class="card"
+    id="dashboard"
+    data-html2pdf-src="../progen-craft/design-system/utils/html2pdf.bundle.min.js"
+  >
     <button
       type="button"
       class="theme-toggle"
@@ -41,8 +46,11 @@
         <h1 class="audit-banner__title" id="dash-audit-title">UI Audit</h1>
         <div class="audit-banner__meta" id="dash-audit-meta" hidden></div>
       </div>
-      <div class="audit-banner__rag" id="dash-rag-wrap" hidden>
-        <span class="audit-rag" id="dash-rag-badge" role="status"></span>
+      <div class="audit-banner__aside">
+        <div class="audit-banner__rag" id="dash-rag-wrap" hidden>
+          <span class="audit-rag" id="dash-rag-badge" role="status"></span>
+        </div>
+        <div id="dash-pdf-download-root" class="audit-banner__pdf-root"></div>
       </div>
     </div>
 
@@ -224,10 +232,13 @@
       </div>
     </div>
     </div>
+
+    <p class="dashboard-ai-note" data-i18n="footer.aiDisclaimer" role="note">
+      NOTE: This is an AI-driven experience, and while we strive for accuracy, AI may sometimes generate
+      unexpected or imperfect responses.
+    </p>
   </article>
 
-  <script src="audit-dashboard-i18n.js"></script>
-  <script src="audit-dashboard-metrics.js"></script>
-  <script src="audit-dashboard.js" defer></script>
+  <script type="module" src="audit-dashboard-entry.js"></script>
 </body>
 </html>

@@ -1,0 +1,111 @@
+/* Row list primitives (icon + body + optional progress). Used by metric pillars and host dashboards. */
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.icon-box {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.icon-box svg {
+  width: 22px;
+  height: 22px;
+  stroke: var(--icon-stroke);
+  fill: none;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.row-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.row-titles {
+  flex: 1;
+  min-width: 0;
+}
+
+.row-title {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.row-sub {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+  line-height: 1.35;
+}
+
+.row-value {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--text);
+  flex-shrink: 0;
+  line-height: 1.25;
+  padding-top: 1px;
+}
+
+.row-progress {
+  margin-top: 8px;
+}
+
+.row-progress-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.row-passed-total {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+.row-progress-hint {
+  font-size: 0.625rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.row-progress-bar {
+  height: 5px;
+  border-radius: 4px;
+  background: var(--score-bar-track);
+  overflow: hidden;
+}
+
+.row-progress-fill {
+  height: 100%;
+  width: 0;
+  max-width: 100%;
+  border-radius: 4px;
+  transition: width 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.row-progress-fill.row-progress-fill--expanded {
+  width: var(--row-bar-target, 0%);
+}

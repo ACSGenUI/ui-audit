@@ -1,6 +1,7 @@
-(function (global) {
-  var STORAGE_KEY = "ui-audit-locale";
-  var DEFAULT_LOCALE = "en";
+const g = globalThis;
+
+var STORAGE_KEY = "ui-audit-locale";
+var DEFAULT_LOCALE = "en";
 
   var MESSAGES = {
     en: {
@@ -69,6 +70,12 @@
       "audit.commitLabel": "Commit",
       "audit.generatedLabel": "Generated",
       "audit.ragBadge": "RAG: {rating}",
+      "pdf.download": "Download PDF",
+      "pdf.downloadAria": "Download audit report as PDF",
+      "pdf.preparing": "Preparing PDF…",
+      "pdf.error": "PDF export failed. Try again.",
+      "footer.aiDisclaimer":
+        "NOTE: This is an AI-driven experience, and while we strive for accuracy, AI may sometimes generate unexpected or imperfect responses.",
       "insights.checklistSummary": "Checklist summary",
       "insights.passRates": "Pass rates",
       "insights.col.value": "Value",
@@ -160,6 +167,12 @@
       "audit.commitLabel": "Commit",
       "audit.generatedLabel": "Generado",
       "audit.ragBadge": "RAG: {rating}",
+      "pdf.download": "Descargar PDF",
+      "pdf.downloadAria": "Descargar informe de auditoría en PDF",
+      "pdf.preparing": "Preparando PDF…",
+      "pdf.error": "Error al exportar PDF. Inténtelo de nuevo.",
+      "footer.aiDisclaimer":
+        "NOTA: Esta es una experiencia impulsada por IA y, aunque buscamos precisión, la IA a veces puede generar respuestas inesperadas o imperfectas.",
       "insights.checklistSummary": "Resumen de lista de comprobación",
       "insights.passRates": "Tasas de aprobación",
       "insights.col.value": "Valor",
@@ -203,7 +216,7 @@
 
   function readLocaleFromQuery() {
     try {
-      var q = new URLSearchParams(global.location.search);
+      var q = new URLSearchParams(g.location.search);
       return q.get("lang") || q.get("locale");
     } catch (queryError) {
       return null;
@@ -212,7 +225,7 @@
 
   function readLocaleFromStorage() {
     try {
-      return global.localStorage.getItem(STORAGE_KEY);
+      return g.localStorage.getItem(STORAGE_KEY);
     } catch (storageError) {
       return null;
     }
@@ -223,8 +236,7 @@
     if (fromQuery) return normalizeLocale(fromQuery);
     var fromStorage = readLocaleFromStorage();
     if (fromStorage) return normalizeLocale(fromStorage);
-    var nav =
-      (global.navigator && (global.navigator.language || global.navigator.userLanguage)) || "";
+    var nav = (g.navigator && (g.navigator.language || g.navigator.userLanguage)) || "";
     return normalizeLocale(String(nav));
   }
 
@@ -246,13 +258,13 @@
     currentLocale = normalizeLocale(localeTag);
     if (persist === true) {
       try {
-        global.localStorage.setItem(STORAGE_KEY, currentLocale);
+        g.localStorage.setItem(STORAGE_KEY, currentLocale);
       } catch (persistError) {
         /* ignore */
       }
     }
     try {
-      global.document.documentElement.lang = currentLocale;
+      g.document.documentElement.lang = currentLocale;
     } catch (langError) {
       /* ignore */
     }
@@ -266,18 +278,21 @@
     return currentLocale === "es" ? "es" : "en-US";
   }
 
-  try {
-    global.document.documentElement.lang = currentLocale;
-  } catch (e) {
-    /* ignore */
-  }
+try {
+  g.document.documentElement.lang = currentLocale;
+} catch (e) {
+  /* ignore */
+}
 
-  global.AuditDashboardI18n = {
-    t: t,
-    setLocale: setLocale,
-    getLocale: getLocale,
-    numberLocaleTag: numberLocaleTag,
-    supportedLocales: supportedLocales,
-    MESSAGES: MESSAGES,
-  };
-})(typeof window !== "undefined" ? window : globalThis);
+const AuditDashboardI18n = {
+  t: t,
+  setLocale: setLocale,
+  getLocale: getLocale,
+  numberLocaleTag: numberLocaleTag,
+  supportedLocales: supportedLocales,
+  MESSAGES: MESSAGES,
+};
+g.AuditDashboardI18n = AuditDashboardI18n;
+
+export default AuditDashboardI18n;
+export { t, setLocale, getLocale, numberLocaleTag, supportedLocales, MESSAGES };

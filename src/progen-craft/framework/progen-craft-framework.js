@@ -1,0 +1,129 @@
+/**
+ * Progen Craft — Application framework
+ * Config-driven view rendering on top of ProgenCraftDesignSystem layouts + atomic charts/widgets.
+ * Host apps supply a declarative view model (layout + component bindings + resolved copy where needed).
+ */
+import { ProgenCraftDesignSystem as DS } from '../design-system/progen-craft-design-system.js';
+
+function readPayload() {
+  if (
+    typeof globalThis.__PRODUCT_AUDIT_DASHBOARD__ === "object" &&
+    globalThis.__PRODUCT_AUDIT_DASHBOARD__ !== null
+  )
+    return globalThis.__PRODUCT_AUDIT_DASHBOARD__;
+  try {
+    var raw = new URLSearchParams(globalThis.location.search).get("data");
+    if (raw) return JSON.parse(decodeURIComponent(raw));
+  } catch (payloadParseError) {
+    /* ignore */
+  }
+  return null;
+}
+
+function defaultFormatPercentLabel(pct) {
+  if (!isFinite(pct)) return "0";
+  var rounded = Math.round(pct * 10) / 10;
+  return Math.abs(rounded % 1) < 0.05 ? String(Math.round(rounded)) : String(rounded);
+}
+
+/**
+ * Renders a metrics dashboard from a host-built view model.
+ * @param {HTMLElement | null} root
+ * @param {{ drillGroups?: object | null, cards: object[] } | null} viewModel
+ * @param {{ t: Function, formatPercentLabel?: Function, numberLocaleTag?: Function }} env
+ */
+function renderDashboardView(root, viewModel, env) {
+  if (!root || !viewModel || !Array.isArray(viewModel.cards)) return;
+  env = env || {};
+  var t = env.t || function (k) {
+    return k;
+  };
+  var formatPercentLabel = typeof env.formatPercentLabel === "function" ? env.formatPercentLabel : defaultFormatPercentLabel;
+  var numberLocaleTag = env.numberLocaleTag || function () {
+    return "en-US";
+  };
+
+  root.innerHTML = "";
+  globalThis.__METRICS_DRILL_GROUPS__ = viewModel.drillGroups != null ? viewModel.drillGroups : null;
+
+  viewModel.cards.forEach(function (card) {
+    if (card.kind === "composite") {
+      var shell = DS.layouts.categoryCard({
+        categoryKey: card.categoryKey,
+        ariaLabel: card.ariaLabel,
+      });
+      shell.classList.add("metric-category-card--composite");
+      shell.appendChild(DS.layouts.categoryHeading(card.title));
+      var composite = DS.layouts.compositeShell();
+      (card.sections || []).forEach(function (sec) {
+        if (sec.kind === "donutRow" && sec.donuts && sec.donuts.length) {
+          var dr = DS.layouts.donutsRow();
+          sec.donuts.forEach(function (d) {
+            DS.charts.appendMiniDonutBreakdownCard(dr, {
+              t: t,
+              title: d.title,
+              passed: d.passed,
+              failed: d.failed,
+              total: d.total,
+              formatPercentLabel: formatPercentLabel,
+            });
+          });
+          composite.appendChild(dr);
+        } else if (sec.kind === "stackedBar" && sec.model && sec.model.segments && sec.model.segments.length) {
+          DS.charts.appendStackedDistributionBar(composite, sec.model, {
+            t: t,
+            formatPercentLabel: formatPercentLabel,
+            sectionTitle: sec.sectionTitle,
+          });
+        }
+      });
+      shell.appendChild(composite);
+      root.appendChild(shell);
+      return;
+    }
+    if (card.kind === "pillars") {
+      var cardEl = DS.layouts.categoryCard({
+        categoryKey: card.categoryKey,
+        ariaLabel: card.ariaLabel,
+      });
+      cardEl.appendChild(DS.layouts.categoryHeading(card.title));
+      var pillars = DS.layouts.pillarsStack();
+      (card.rows || []).forEach(function (r, idx) {
+        var row = DS.layouts.pillarRow({
+          iconIndex: idx,
+          title: r.title,
+          subtitle: r.subtitle,
+          valueText: r.valueText,
+          scoreLike: !!r.scoreLike,
+        });
+        if (r.scoreLike && r.numericScore != null && isFinite(Number(r.numericScore))) {
+          var domainLike = { value: DS.score.clampPct(Number(r.numericScore)) };
+          var pr = DS.score.resolvePassedTotal(domainLike);
+          DS.widgets.syncRowProgressUi(row, pr.passed, pr.total, {
+            t: t,
+            numberLocaleTag: numberLocaleTag,
+          });
+        }
+        pillars.appendChild(row);
+      });
+      cardEl.appendChild(pillars);
+      root.appendChild(cardEl);
+    }
+  });
+
+  DS.motion.expandElementsBySelector(root, ".row-progress-fill", "row-progress-fill--expanded");
+  DS.motion.expandElementsBySelector(root, ".pc-stacked-bar__seg-fill", "pc-stacked-bar__seg-fill--expanded");
+}
+
+export const ProgenCraft = {
+  data: {
+    readPayload: readPayload,
+  },
+  views: {
+    metrics: {
+      renderDashboardView: renderDashboardView,
+    },
+  },
+};
+
+globalThis.ProgenCraft = ProgenCraft;

@@ -1,0 +1,35 @@
+/* Score tier fills (row progress + score bars). Text color for .score-value stays in app where used. */
+.score-tier-red .score-bar-fill,
+.row-progress-fill.score-tier-red {
+  background: #ef4444;
+}
+
+.score-tier-amber .score-bar-fill,
+.row-progress-fill.score-tier-amber {
+  background: #f59e0b;
+}
+
+.score-tier-green .score-bar-fill,
+.row-progress-fill.score-tier-green {
+  background: #10b981;
+}
+
+.score-tier-neutral .score-bar-fill,
+.row-progress-fill.score-tier-neutral {
+  background: var(--score-neutral-bar);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .score-tier-red .score-value,
+  :root[data-theme="dark"] .score-tier-red .score-value {
+    color: #fca5a5;
+  }
+  :root:not([data-theme]) .score-tier-amber .score-value,
+  :root[data-theme="dark"] .score-tier-amber .score-value {
+    color: #fcd34d;
+  }
+  :root:not([data-theme]) .score-tier-green .score-value,
+  :root[data-theme="dark"] .score-tier-green .score-value {
+    color: #6ee7b7;
+  }
+}

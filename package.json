@@ -10,6 +10,7 @@
     "start": "node src/mcp-stdio.js"
   },
   "dependencies": {
+    "esbuild": "^0.25.0",
     "@modelcontextprotocol/ext-apps": "^1.3.1",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "csv-parse": "^5.5.0",

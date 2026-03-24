@@ -12,6 +12,7 @@ import { readFileSync } from 'fs';
 import { readFile, writeFile, copyFile, access, mkdir, readdir, unlink } from 'fs/promises';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
+import esbuild from 'esbuild';
 import config from './config.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -20,48 +21,66 @@ const defaultAuditMetrics = JSON.parse(
   readFileSync(resolve(__dirname, 'default-audit-metrics.json'), 'utf8')
 );
 const PRODUCT_AUDIT_DASHBOARD_URI = 'ui://ui-audit/audit-dashboard.html';
+const HTML2PDF_VENDOR_URI = 'ui://ui-audit/vendor/html2pdf.bundle.min.js';
+const html2pdfVendorPath = resolve(__dirname, 'progen-craft', 'design-system', 'utils', 'html2pdf.bundle.min.js');
 const auditDashboardHtmlPath = resolve(__dirname, 'app-ui', 'audit-dashboard.html');
 const auditDashboardCssPath = resolve(__dirname, 'app-ui', 'audit-dashboard.css');
-const auditDashboardMetricsPath = resolve(__dirname, 'app-ui', 'audit-dashboard-metrics.js');
-const auditDashboardJsPath = resolve(__dirname, 'app-ui', 'audit-dashboard.js');
-const auditDashboardI18nPath = resolve(__dirname, 'app-ui', 'audit-dashboard-i18n.js');
+const auditDashboardMcpEntryPath = resolve(__dirname, 'app-ui', 'audit-dashboard-mcp-entry.js');
+const designSystemCssDir = resolve(__dirname, 'progen-craft', 'design-system', 'css');
+const designSystemCssFragments = [
+  'ds-tokens.css',
+  'ds-primitives-row.css',
+  'ds-layouts-metric-category.css',
+  'ds-components-donut-seg.css',
+  'ds-components-mini-donut.css',
+  'ds-components-stacked-bar.css',
+  'ds-components-score-tier.css',
+  'ds-motion-preference.css',
+  'ds-components-pdf-download.css',
+];
+
+async function readBundledDesignSystemCss() {
+  const parts = await Promise.all(
+    designSystemCssFragments.map((name) => readFile(resolve(designSystemCssDir, name), 'utf-8'))
+  );
+  return parts.join('\n');
+}
 
 async function buildAuditDashboardContents(uri, variables) {
   let html = await readFile(auditDashboardHtmlPath, 'utf-8');
-  const [css, metricsJs, js, i18nJs] = await Promise.all([
+  const [css, bundleResult, dsCss] = await Promise.all([
     readFile(auditDashboardCssPath, 'utf-8'),
-    readFile(auditDashboardMetricsPath, 'utf-8'),
-    readFile(auditDashboardJsPath, 'utf-8'),
-    readFile(auditDashboardI18nPath, 'utf-8'),
+    esbuild.build({
+      entryPoints: [auditDashboardMcpEntryPath],
+      bundle: true,
+      write: false,
+      platform: 'browser',
+      format: 'esm',
+    }),
+    readBundledDesignSystemCss(),
   ]);
+  const bundledJs = bundleResult.outputFiles[0].text;
   html = html.replace(
-    /<link\s+rel=["']stylesheet["']\s+href=["']audit-dashboard\.css["']\s*\/?>/i,
-    `<style>\n${css.trimEnd()}\n</style>`
+    /<link\s+rel=["']stylesheet["']\s+href=["']\.\.\/progen-craft\/design-system\/progen-craft-design-system\.css["']\s*\/?>\s*<link\s+rel=["']stylesheet["']\s+href=["']audit-dashboard\.css["']\s*\/?>/i,
+    `<style>\n${dsCss.trimEnd()}\n${css.trimEnd()}\n</style>`
   );
   html = html.replace(
-    /<script\s+src=["']audit-dashboard-i18n\.js["']\s*><\/script>/i,
-    `<script>\n${i18nJs.trimEnd()}\n</script>`
-  );
-  html = html.replace(
-    /<script\s+src=["']audit-dashboard-metrics\.js["']\s*><\/script>/i,
-    `<script>\n${metricsJs.trimEnd()}\n</script>`
-  );
-  html = html.replace(
-    /<script\s+src=["']audit-dashboard\.js["']\s+defer\s*><\/script>/i,
-    `<script defer>\n${js.trimEnd()}\n</script>`
+    /<script\s+type=["']module["']\s+src=["']audit-dashboard-entry\.js["']\s*><\/script>/i,
+    `<script type="module">\n${bundledJs.trimEnd()}\n</script>`
   );
   const raw = variables?.data ?? uri.searchParams.get('data');
+  let tailScripts = '';
   if (raw) {
     try {
       const parsed = JSON.parse(decodeURIComponent(raw));
       const safe = JSON.stringify(parsed).replace(/</g, '\\u003c');
-      html = html.replace(
-        '</body>',
-        `<script>window.__PRODUCT_AUDIT_DASHBOARD__=${safe};</script></body>`
-      );
+      tailScripts = `<script>window.__PRODUCT_AUDIT_DASHBOARD__=${safe};</script>`;
     } catch {
-      /* keep default HTML */
+      /* ignore invalid data param */
     }
+  }
+  if (tailScripts) {
+    html = html.replace('</body>', `${tailScripts}</body>`);
   }
   return {
     contents: [{ uri: uri.href, mimeType: RESOURCE_MIME_TYPE, text: html }],
@@ -127,6 +146,21 @@ server.registerResource(
     mimeType: RESOURCE_MIME_TYPE,
   },
   async (uri, variables) => buildAuditDashboardContents(uri, variables)
+);
+
+server.registerResource(
+  'html2pdf-vendor',
+  HTML2PDF_VENDOR_URI,
+  {
+    description: 'html2pdf.js bundle for audit dashboard PDF export.',
+    mimeType: 'application/javascript',
+  },
+  async (uri) => {
+    const text = await readFile(html2pdfVendorPath, 'utf-8');
+    return {
+      contents: [{ uri: uri.href, mimeType: 'application/javascript', text }],
+    };
+  }
 );
 
 // ── Prompts ──
@@ -339,18 +373,60 @@ Count "No" rows matching the relevant Group + Sub-Group + checklist item keyword
 ### Step 4 — Write metrics
 6. \`write-metrics\` with the full computed key-value object — writes all values to the metrics CSV at once.
 
-### Step 5 — Cleanup
-7. Call \`cleanup-workspace\` — removes any auto-generated JSON, MD, and Python files from the workspace, keeping only CSVs.
+### Step 5 — Show audit dashboard
+7. Immediately call **\`show-audit-dashboard\`** with:
+   - \`metrics\`: the **same** flat key-value object you passed to \`write-metrics\` (all EDS-style keys).
+   - \`projectName\`: from \`metadata.projectName\` in that object, or the user’s project name from Step 0.
+   - \`locale\`: only if the user requested a specific dashboard language.
+   This opens the Product Audit Dashboard MCP App (\`ui://ui-audit/audit-dashboard.html\`). Ensure the host **opens or focuses** \`_meta.ui.resourceUri\` from the tool response so the user sees the live dashboard.
 
-### Step 6 — Report
-8. Print a concise summary table: RAG rating, uiQualityScore, domain scores, criticalFailed count, mandatoryFailed count, and the path to the generated metrics file.
+### Step 6 — Cleanup
+8. Call \`cleanup-workspace\` — removes any auto-generated JSON, MD, and Python files from the workspace, keeping only CSVs.
+
+### Step 7 — Report
+9. Print a concise summary table: RAG rating, uiQualityScore, domain scores, criticalFailed count, mandatoryFailed count, and the path to the generated metrics file.
 
 ## Rules
 - Use ONLY \`read-full-checklist\` to read audit data — do NOT call \`read-checklist-row\` one row at a time.
 - Leave a metric value as empty string ("") if it cannot be derived from the audit data — do NOT guess or fabricate values.
+- **Always** call \`show-audit-dashboard\` after a successful \`write-metrics\` (before \`cleanup-workspace\`) so the dashboard displays the metrics you just generated.
 - Never stop mid-generation.`,
       },
     }],
+  })
+);
+
+server.registerPrompt(
+  'show-audit-dashboard',
+  {
+    description:
+      'Open the Product Audit Dashboard MCP App (interactive UI). Invokes the show-audit-dashboard tool so the host can render ui://ui-audit/audit-dashboard.html.',
+  },
+  () => ({
+    messages: [
+      {
+        role: 'user',
+        content: {
+          type: 'text',
+          text: `Open the **Product Audit Dashboard** in the MCP App UI.
+
+## What to do
+1. Call the MCP tool **\`show-audit-dashboard\`** now.
+2. Use **no arguments** (or an empty object \`{}\`) to load the built-in sample metrics from the server defaults.
+3. If the user asked for a specific project or data, pass a matching payload:
+   - \`projectName\`, \`locale\`
+   - \`metrics\`: flat key-value object (EDS-style keys such as \`metadata.projectName\`, \`summary.*\`, \`overallScores.*\`, \`overallStatus.*\`)
+   - optional \`domains\`, \`auditBanner\`, \`checklistSummaryLine\`, \`totalComplianceValue\`, \`overviewCenterPercent\`, \`checklistSummaryMetrics\`, \`passRates\`
+
+## After the tool returns
+- The tool response includes MCP App metadata (\`_meta.ui.resourceUri\`) pointing at \`ui://ui-audit/audit-dashboard.html\` (with \`?data=...\` when the JSON is small enough).
+- Ensure the host **opens or focuses** that MCP App / UI resource so the user sees the dashboard.
+- Summarize in one short line what is shown (project name, RAG if present, checklist totals if present).
+
+Do not ask follow-up questions unless the user’s request was ambiguous about which metrics to show.`,
+        },
+      },
+    ],
   })
 );
 
@@ -416,7 +492,7 @@ const passRatesInputSchema = z.object({
 
 registerAppTool(
   server,
-  'show-audit-dashboard',
+  'display-audit-dashboard',
   {
     title: 'Audit dashboard',
     description:

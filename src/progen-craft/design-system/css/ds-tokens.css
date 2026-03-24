@@ -1,0 +1,30 @@
+/* Progen Craft design tokens (mini donut slices). Consumes host :root theme vars elsewhere. */
+:root {
+  --pc-mini-donut-slice-1: #6366f1;
+  --pc-mini-donut-slice-2: #f59e0b;
+  --pc-mini-donut-slice-3: #94a3b8;
+  --pc-mini-donut-empty: #e2e8f0;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --pc-mini-donut-slice-1: #818cf8;
+    --pc-mini-donut-slice-2: #fbbf24;
+    --pc-mini-donut-slice-3: #64748b;
+    --pc-mini-donut-empty: #334155;
+  }
+}
+
+:root[data-theme="light"] {
+  --pc-mini-donut-slice-1: #6366f1;
+  --pc-mini-donut-slice-2: #f59e0b;
+  --pc-mini-donut-slice-3: #94a3b8;
+  --pc-mini-donut-empty: #e2e8f0;
+}
+
+:root[data-theme="dark"] {
+  --pc-mini-donut-slice-1: #818cf8;
+  --pc-mini-donut-slice-2: #fbbf24;
+  --pc-mini-donut-slice-3: #64748b;
+  --pc-mini-donut-empty: #334155;
+}

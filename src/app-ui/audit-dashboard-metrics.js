@@ -5,8 +5,7 @@
  * DEFAULT_AUDIT_METRICS — starting sample when no MCP/query payload is present.
  * Keep in sync with src/default-audit-metrics.json (used by the MCP server).
  */
-(function (global) {
-  var CATEGORY_ORDER = [
+var CATEGORY_ORDER = [
     "overallScores",
     "summary",
     "overallStatus",
@@ -225,20 +224,38 @@
     return map;
   }
 
-  global.AuditDashboardMetrics = {
-    DEFAULT_AUDIT_METRICS: DEFAULT_AUDIT_METRICS,
-    CATEGORY_ORDER: CATEGORY_ORDER,
-    getFlatMetricsFromPayload: getFlatMetricsFromPayload,
-    groupMetricsByCategory: groupMetricsByCategory,
-    humanizeSegment: humanizeSegment,
-    splitRestPathSegments: splitRestPathSegments,
-    formatMetricRestPathLabel: formatMetricRestPathLabel,
-    metricRowTitleAndSubtitle: metricRowTitleAndSubtitle,
-    isScoreLikeMetric: isScoreLikeMetric,
-    sortCategoryNames: sortCategoryNames,
-    buildDonutSlicesFromFlat: buildDonutSlicesFromFlat,
-    pickMetadataEntries: pickMetadataEntries,
-    getMetadataMap: getMetadataMap,
-    DONUT_PALETTE: DONUT_PALETTE,
-  };
-})(typeof window !== "undefined" ? window : globalThis);
+const AuditDashboardMetrics = {
+  DEFAULT_AUDIT_METRICS: DEFAULT_AUDIT_METRICS,
+  CATEGORY_ORDER: CATEGORY_ORDER,
+  getFlatMetricsFromPayload: getFlatMetricsFromPayload,
+  groupMetricsByCategory: groupMetricsByCategory,
+  humanizeSegment: humanizeSegment,
+  splitRestPathSegments: splitRestPathSegments,
+  formatMetricRestPathLabel: formatMetricRestPathLabel,
+  metricRowTitleAndSubtitle: metricRowTitleAndSubtitle,
+  isScoreLikeMetric: isScoreLikeMetric,
+  sortCategoryNames: sortCategoryNames,
+  buildDonutSlicesFromFlat: buildDonutSlicesFromFlat,
+  pickMetadataEntries: pickMetadataEntries,
+  getMetadataMap: getMetadataMap,
+  DONUT_PALETTE: DONUT_PALETTE,
+};
+globalThis.AuditDashboardMetrics = AuditDashboardMetrics;
+
+export default AuditDashboardMetrics;
+export {
+  DEFAULT_AUDIT_METRICS,
+  CATEGORY_ORDER,
+  getFlatMetricsFromPayload,
+  groupMetricsByCategory,
+  humanizeSegment,
+  splitRestPathSegments,
+  formatMetricRestPathLabel,
+  metricRowTitleAndSubtitle,
+  isScoreLikeMetric,
+  sortCategoryNames,
+  buildDonutSlicesFromFlat,
+  pickMetadataEntries,
+  getMetadataMap,
+  DONUT_PALETTE,
+};
