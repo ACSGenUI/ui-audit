@@ -1,1 +1,0 @@
-import './progen-craft/design-system/utils/html2pdf.bundle.min.js';
