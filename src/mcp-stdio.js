@@ -334,33 +334,28 @@ If any checklist file is not found, continue with the available sources and leav
 #### Domain scores (0–100)
 Score = (passed rows in domain / total answered rows in domain) × 100, rounded to 1 decimal. Omit rows with empty \`Implemented?\`.
 
-**Technical domains** (Code Audit + Browser Audit rows — same groupings as v1):
-- \`scores.accessibility\` → Accessibility phase across all audits.
-- \`scores.performance\` → Performance phase (browser) + "Performance & Misc - CSS" group (code) + Performance phase (manual).
-- \`scores.security\` → Security phase across all audits.
-- \`scores.htmlImplementation\` → HTML groups (code + browser audits).
-- \`scores.cssImplementation\` → CSS groups (code audit).
-- \`scores.javascriptImplementation\` → JavaScript groups (code + browser audits).
-- \`scores.codeQuality\` → Code Quality groups (code audit).
-- \`scores.processGovernance\` → Process & Governance phase (code audit + manual).
-
-**Manual-only phase scores** (Manual Checklist rows only, by Phase column):
-- \`scores.discovery\` → Phase = "Discovery"
-- \`scores.design\` → Phase = "Design"
-- \`scores.setup\` → Phase = "Setup"
-- \`scores.visualDesign\` → Phase = "Visual Design"
-- \`scores.userExperience\` → Phase = "User Experience"
-- \`scores.contentQuality\` → Phase = "Content Quality"
-- \`scores.testing\` → Phase = "Testing"
-- \`scores.authorValidation\` → Phase = "Author Validation"
-- \`scores.internationalization\` → Phase = "Internationalization"
-- \`scores.architectureReview\` → Phase = "Architecture & Code Review"
-- \`scores.preGoLive\` → Phase = "Pre-GoLive"
-- \`scores.postGoLive\` → Phase = "Post-GoLive"
+**Domain scores** — one score per category, combining rows from all applicable audits:
+- \`scores.discovery\` → Manual Checklist Phase = "Discovery"
+- \`scores.contentQuality\` → Manual Checklist Phase = "Content Quality"
+- \`scores.internationalization\` → Manual Checklist Phase = "Internationalization"
+- \`scores.design\` → Manual Checklist Phase = "Design"
+- \`scores.userExperience\` → Manual Checklist Phase = "User Experience"
+- \`scores.visualDesign\` → Manual Checklist Phase = "Visual Design"
+- \`scores.setup\` → Manual Checklist Phase = "Setup"
+- \`scores.development\` → Code Audit groups: HTML Semantics & Structure, HTML Forms & Inputs, HTML Media & Data, HTML Metadata & Validation, CSS Architecture & Tokens, Layout & Responsiveness, Performance & Misc - CSS, JavaScript Architecture & Loading, JavaScript DOM & Performance Safety, JavaScript State & Reliability, JavaScript Code Structure & Hygiene, Code Quality - Hygiene & Safety, Code Quality - Structure & Readability, Code Quality - Errors & Reliability, Code Quality - Architecture & Dependencies; AND Browser Audit Phase = "Development".
+- \`scores.architectureReview\` → Manual Checklist Phase = "Architecture & Code Review"
+- \`scores.testing\` → Manual Checklist Phase = "Testing"
+- \`scores.security\` → Security phase/groups across all three audits.
+- \`scores.performance\` → Performance phase/groups across all three audits.
+- \`scores.accessibility\` → Accessibility phase/groups across all three audits.
+- \`scores.authorValidation\` → Manual Checklist Phase = "Author Validation"
+- \`scores.preGoLive\` → Manual Checklist Phase = "Pre-GoLive"
+- \`scores.postGoLive\` → Manual Checklist Phase = "Post-GoLive"
+- \`scores.processGovernance\` → Code Audit groups: Version Control & Repository, Testing & Quality Gates, Project Configuration, GenAI Tools & Code Quality; AND Manual Checklist Phase = "Process & Governance".
 
 #### Overall score
 - \`scores.overall\` = weighted average:
-  - accessibility 20%, performance 20%, codeQuality 15%, security 15%, htmlImplementation 8%, javascriptImplementation 7%, processGovernance 5%, discovery 1%, design 1%, setup 1%, visualDesign 1%, userExperience 1%, contentQuality 1%, testing 1%, preGoLive 1%, postGoLive 1%, authorValidation 1%.
+  - accessibility 15%, performance 15%, security 15%, development 15%, processGovernance 5%, testing 5%, discovery 3%, design 3%, setup 3%, contentQuality 3%, userExperience 3%, visualDesign 3%, preGoLive 3%, postGoLive 3%, authorValidation 2%, architectureReview 2%, internationalization 2%.
   - Skip any domain with no answered rows (exclude from weight total and renormalise).
 
 #### Manual per-item metrics
@@ -674,7 +669,8 @@ After computing all scores and summaries, populate every \`browser.*\` and \`cod
 
 #### Risk index — per domain
 - "High" if score < 60, "Medium" if 60–79, "Low" if ≥ 80. Use "" if no answered rows exist.
-- Populate all \`risk.browser.*\`, \`risk.code.*\`, and \`risk.manual.*\` keys accordingly.
+- Populate one \`risk.*\` key per category, matching the 17 domain scores:
+  \`risk.discovery\`, \`risk.contentQuality\`, \`risk.internationalization\`, \`risk.design\`, \`risk.userExperience\`, \`risk.visualDesign\`, \`risk.setup\`, \`risk.development\`, \`risk.architectureReview\`, \`risk.testing\`, \`risk.security\`, \`risk.performance\`, \`risk.accessibility\`, \`risk.authorValidation\`, \`risk.preGoLive\`, \`risk.postGoLive\`, \`risk.processGovernance\`.
 
 #### Overall status
 - \`status.ragRating\` = "Red" if scores.overall < 60, "Amber" if 60–79, "Green" if ≥ 80.
@@ -685,7 +681,7 @@ After computing all scores and summaries, populate every \`browser.*\` and \`cod
 - \`status.totalBlockingIssues\` = mandatoryFailed + criticalFailed.
 
 #### Trend snapshot
-Copy current values: \`trend.totalIssues\` = overall.failed, \`trend.criticalIssues\` = criticalFailed, \`trend.overallScore\` = scores.overall, \`trend.accessibilityScore\` = scores.accessibility, \`trend.performanceScore\` = scores.performance, \`trend.securityScore\` = scores.security, \`trend.codeQualityScore\` = scores.codeQuality.
+Copy current values: \`trend.totalIssues\` = overall.failed, \`trend.criticalIssues\` = criticalFailed, \`trend.overallCompliance\` = scores.overall, \`trend.accessibilityCompliance\` = scores.accessibility, \`trend.performanceCompliance\` = scores.performance, \`trend.securityCompliance\` = scores.security, \`trend.developmentCompliance\` = scores.development.
 
 #### Top issues — up to 10
 - Select all "No" rows from all three audits. Sort by: Importance (Critical → High → Medium) then Mandatory (Yes before No).
@@ -699,7 +695,7 @@ Copy current values: \`trend.totalIssues\` = overall.failed, \`trend.criticalIss
 8. \`cleanup-workspace\` — removes any auto-generated JSON, MD, and Python files, keeping only CSVs.
 
 ### Step 6 — Report
-9. Print a concise summary table: RAG rating, go-live readiness, overall score, domain scores, manual phase scores, criticalFailed count, mandatoryFailed count, totalBlockingIssues, and the path to the generated metrics file.
+9. Print a concise summary table: RAG rating, go-live readiness, overall score, all 17 domain scores with their risk ratings, criticalFailed count, mandatoryFailed count, totalBlockingIssues, and the path to the generated metrics file.
 
 ## Rules
 - Use ONLY \`read-full-checklist\` to load audit data — never \`read-checklist-row\` for analysis.
