@@ -1,0 +1,59 @@
+/* Issues / data table — horizontal dividers only, no vertical rules. Uses host --text / --text-muted / --border-table. */
+.pc-issues-table-wrap {
+  width: 100%;
+  margin-top: 4px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pc-issues-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: inherit;
+  table-layout: auto;
+}
+
+.pc-issues-table thead th {
+  text-align: left;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text, #1e293b);
+  padding: 14px 16px 12px 0;
+  border-bottom: 1px solid var(--border-table, #e2e8f0);
+  vertical-align: bottom;
+}
+
+.pc-issues-table thead th:first-child {
+  padding-left: 0;
+}
+
+.pc-issues-table tbody td {
+  text-align: left;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--text-muted, #64748b);
+  padding: 18px 16px 18px 0;
+  border-bottom: 1px solid var(--border-table, #e2e8f0);
+  vertical-align: top;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.pc-issues-table tbody td:first-child {
+  padding-left: 0;
+}
+
+.pc-issues-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.pc-issues-table th:nth-child(2),
+.pc-issues-table td:nth-child(2) {
+  min-width: min(280px, 40vw);
+}
+
+.metric-category-card--issues .pc-issues-table-wrap {
+  pointer-events: none;
+}

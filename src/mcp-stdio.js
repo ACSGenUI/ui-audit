@@ -37,6 +37,8 @@ const designSystemCssFragments = [
   'ds-components-score-tier.css',
   'ds-motion-preference.css',
   'ds-components-pdf-download.css',
+  'ds-components-issues-table.css',
+  'ds-components-scores-bar-chart.css',
 ];
 
 async function readBundledDesignSystemCss() {
@@ -303,16 +305,13 @@ Do NOT pause, ask questions, or wait for user input at any point after receiving
 Analyse all rows from both audits and compute every metric value using the rules below.
 Use each row's \`Group\`, \`Sub-Group\`, \`Audit Type\`, \`Importance\`, \`Mandatory\`, \`Implemented? (Yes / No)\`, \`Comments\`, and \`Evidence\` columns.
 
-**Summary counts**
-- \`summary.codeAuditTotal / Passed / Failed\` — totals for the code-audit checklist only.
-- \`summary.browserAuditTotal / Passed / Failed\` — totals for the browser-audit checklist only.
-- \`summary.totalChecks\` = codeAuditTotal + browserAuditTotal.
-- \`summary.passed / failed\` = combined Yes / No counts.
-- \`summary.notApplicable\` = rows where \`Implemented? (Yes / No)\` is empty.
-- \`summary.mandatoryFailed\` = No rows where \`Mandatory\` is "Yes".
-- \`summary.criticalFailed\` = No rows where \`Importance\` is "Critical".
-- \`summary.highFailed\` = No rows where \`Importance\` is "High".
-- \`summary.mediumFailed\` = No rows where \`Importance\` is "Medium".
+**Summary counts** (nested keys; legacy flat keys like \`summary.codeAuditTotal\` remain supported by the dashboard)
+- \`summary.browserAudit.total\`, \`summary.browserAudit.passed\`, \`summary.browserAudit.failed\`, \`summary.browserAudit.notApplicable\` — browser-audit checklist only.
+- \`summary.codeAudit.total\`, \`summary.codeAudit.passed\`, \`summary.codeAudit.failed\`, \`summary.codeAudit.notApplicable\` — code-audit checklist only.
+- \`summary.manualAudit.total\`, \`summary.manualAudit.passed\`, \`summary.manualAudit.failed\`, \`summary.manualAudit.notApplicable\` — manual-audit checklist only (if applicable).
+- \`summary.overall.total\` = sum of audit-type totals; \`summary.overall.passed / failed / notApplicable\` = combined across audits.
+- \`summary.overall.mandatoryFailed\` = No rows where \`Mandatory\` is "Yes"; \`summary.overall.criticalFailed / highFailed / mediumFailed\` = No rows by Importance.
+- Legacy flat keys still work: \`summary.totalChecks\`, \`summary.passed\`, \`summary.failed\`, \`summary.notApplicable\`, \`summary.mandatoryFailed\`, \`summary.criticalFailed\`, \`summary.highFailed\`, \`summary.mediumFailed\`.
 
 **Domain scores (0–100)**
 - Score for each domain = (Yes rows in that domain / total rows in that domain) × 100, rounded to 1 decimal. Omit rows with empty \`Implemented\`.
@@ -342,16 +341,17 @@ Count "No" rows matching the relevant Group + Sub-Group + checklist item keyword
 - "High" if domain score < 60, "Medium" if 60–79, "Low" if ≥ 80. Use "" if no rows exist for that domain.
 
 **Overall status**
-- \`overallStatus.ragRating\` = "Red" if uiQualityScore < 60, "Amber" if 60–79, "Green" if ≥ 80.
-- \`overallStatus.mandatoryPassRate\` = (mandatory rows that passed / total mandatory rows) × 100, rounded to 1 decimal.
-- \`overallStatus.criticalPassRate\` = same formula for Critical importance rows.
+- \`status.ragRating\` (preferred) or \`overallStatus.ragRating\` = "Red" if overall score < 60, "Amber" if 60–79, "Green" if ≥ 80 (use \`scores.overall\` or \`overallScores.uiQualityScore\`).
+- \`status.mandatoryPassRate\` or \`overallStatus.mandatoryPassRate\` = (mandatory rows that passed / total mandatory rows) × 100, rounded to 1 decimal.
+- \`status.criticalPassRate\` or \`overallStatus.criticalPassRate\` = same formula for Critical importance rows.
 
-**Overall scores**
-- \`overallScores.uiQualityScore\` = weighted average: accessibility 20%, performance 20%, codeQuality 20%, security 15%, html 10%, javascript 10%, processGovernance 5%.
-- All other \`overallScores.*\` = the corresponding domain score.
+**Overall scores** (prefer \`scores.*\`; legacy \`overallScores.*\` still supported)
+- \`scores.overall\` = weighted average: accessibility 20%, performance 20%, codeQuality 20%, security 15%, html 10%, javascript 10%, processGovernance 5% (align pillar keys with \`scores.htmlImplementation\`, \`scores.cssImplementation\`, \`scores.javascriptImplementation\`, etc.).
+- \`overallScores.uiQualityScore\` may mirror \`scores.overall\` for backward compatibility.
+- Other \`scores.*\` pillar keys = corresponding domain scores (0–100).
 
 **Trend snapshot** — set to current computed values (no prior run available):
-- Copy current \`overallScores\` and \`summary.totalIssues / criticalIssues\` values.
+- Prefer \`trend.*\` (e.g. \`trend.totalIssues\`, \`trend.criticalIssues\`, \`trend.overallScore\`) or copy legacy \`trendSnapshot.*\` / \`overallScores\` as needed.
 
 **Top issues** — up to 10
 - Select failed ("No") rows sorted by: Importance (Critical first → High → Medium) then Mandatory (Yes before No).
@@ -496,7 +496,7 @@ registerAppTool(
   {
     title: 'Audit dashboard',
     description:
-      'Opens the Audit MCP App: metadata header, RAG pill, Overall Compliance + donut from overallScores, and category cards from flat metrics keys (prefix = category). Default sample is src/default-audit-metrics.json when metrics is omitted. Override with metrics, optional domains[], locale, etc.',
+      'Opens the Audit MCP App: metadata header, RAG pill, Overall Compliance + donut from scores.* / overallScores, summary mini-donuts (browser / code / manual audit), and category cards from flat metrics keys (prefix = category). Default sample is src/default-audit-metrics.json when metrics is omitted. Override with metrics, optional domains[], locale, etc.',
     inputSchema: {
       projectName: z
         .string()

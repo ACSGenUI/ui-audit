@@ -1,0 +1,238 @@
+/* Configurable horizontal bar chart + legend (scores and similar). */
+.pc-scores-bar-chart {
+  width: 100%;
+  margin-top: 4px;
+}
+
+/* Two columns: chart (fluid) + legend rail — generous gutter + soft legend panel. */
+.pc-scores-bar-chart__main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(11rem, 26%);
+  column-gap: clamp(1.5rem, 4vw, 2.25rem);
+  row-gap: 1.25rem;
+  align-items: start;
+  min-width: 0;
+}
+
+.pc-scores-bar-chart__main > .pc-scores-bar-chart__chart:only-child {
+  grid-column: 1 / -1;
+}
+
+.pc-scores-bar-chart__chart {
+  min-width: 0;
+}
+
+.pc-scores-bar-chart__x-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  margin-bottom: 8px;
+  min-height: 22px;
+}
+
+.pc-scores-bar-chart__x-row-pad {
+  flex: 0 0 28px;
+  width: 28px;
+}
+
+.pc-scores-bar-chart__x-labels {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  min-height: 20px;
+}
+
+.pc-scores-bar-chart__x-tick-label {
+  position: absolute;
+  bottom: 0;
+  transform: translateX(-50%);
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: var(--text-muted, #64748b);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pc-scores-bar-chart__body {
+  display: flex;
+  flex-direction: row;
+  min-width: 0;
+}
+
+.pc-scores-bar-chart__plot-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.pc-scores-bar-chart__grid {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.pc-scores-bar-chart__grid-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed var(--border-table, #e2e8f0);
+  transform: translateX(-0.5px);
+}
+
+.pc-scores-bar-chart__rows {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pc-scores-bar-chart__row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+}
+
+.pc-scores-bar-chart__y-index {
+  flex: 0 0 28px;
+  width: 28px;
+  text-align: center;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-muted, #64748b);
+  font-variant-numeric: tabular-nums;
+}
+
+.pc-scores-bar-chart__track-outer {
+  flex: 1;
+  min-width: 0;
+}
+
+.pc-scores-bar-chart__track {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-height: 30px;
+  gap: 8px;
+}
+
+.pc-scores-bar-chart__bar {
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 28px;
+  max-width: 100%;
+  border-radius: 0 10px 10px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  box-sizing: border-box;
+  transition: width 0.45s ease;
+}
+
+.pc-scores-bar-chart__bar-label--inside {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.pc-scores-bar-chart__bar-label--outside {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text, #1e293b);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.pc-scores-bar-chart__legend {
+  min-width: 0;
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(var(--pc-scores-legend-cols, 1), minmax(0, 1fr));
+  gap: 0.625rem 0.75rem;
+  align-content: start;
+  pointer-events: none;
+  padding: 0.875rem 1rem 0.875rem clamp(1.25rem, 3vw, 1.75rem);
+  margin: 2px 0;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--border-table, #e2e8f0) 85%, transparent);
+  background: color-mix(in srgb, var(--border-table, #e2e8f0) 14%, transparent);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--text, #0f172a) 4%, transparent);
+}
+
+:root[data-theme="dark"] .pc-scores-bar-chart__legend {
+  border-color: color-mix(in srgb, var(--border-table, #334155) 90%, transparent);
+  background: color-mix(in srgb, var(--border-table, #334155) 22%, transparent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.pc-scores-bar-chart__legend-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.625rem;
+  min-width: 0;
+  padding: 0.2rem 0;
+}
+
+.pc-scores-bar-chart__legend-dot {
+  flex-shrink: 0;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--text, #0f172a) 8%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #fff 35%, transparent);
+}
+
+.pc-scores-bar-chart__legend-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pc-scores-bar-chart__legend-name {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text, #1e293b);
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+}
+
+.pc-scores-bar-chart__legend-pct {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-muted, #64748b);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+@media (max-width: 560px) {
+  .pc-scores-bar-chart__main {
+    grid-template-columns: 1fr;
+    row-gap: 1.5rem;
+  }
+
+  .pc-scores-bar-chart__legend {
+    padding: 1.125rem 1rem;
+    margin: 0;
+  }
+}
+
+.metric-category-card--scores .pc-scores-bar-chart {
+  pointer-events: none;
+}

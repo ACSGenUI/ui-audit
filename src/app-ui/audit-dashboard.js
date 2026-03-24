@@ -696,6 +696,15 @@ const THEME_STORAGE_KEY = "ui-audit-theme";
     return v;
   }
 
+  function pickMetricFirst(flat, keys) {
+    if (!flat || !keys || !keys.length) return undefined;
+    for (var i = 0; i < keys.length; i++) {
+      var v = pickMetric(flat, keys[i]);
+      if (v !== undefined) return v;
+    }
+    return undefined;
+  }
+
   function normalizeRagRating(s) {
     var u = String(s || "")
       .trim()
@@ -704,6 +713,61 @@ const THEME_STORAGE_KEY = "ui-audit-theme";
     if (u === "amber" || u === "yellow") return "Amber";
     if (u === "green") return "Green";
     return null;
+  }
+
+  function normalizeGoLiveReady(raw) {
+    var u = String(raw == null ? "" : raw)
+      .trim()
+      .toLowerCase();
+    if (u === "yes" || u === "y" || u === "true" || u === "1") return "Yes";
+    if (u === "no" || u === "n" || u === "false" || u === "0") return "No";
+    return null;
+  }
+
+  function syncDashStatusBadges(flat, auditBanner) {
+    var banner = auditBanner && typeof auditBanner === "object" ? auditBanner : {};
+    var goliveWrap = document.getElementById("dash-golive-wrap");
+    var goliveBadge = document.getElementById("dash-golive-badge");
+    var ragWrap = document.getElementById("dash-rag-wrap");
+    var ragBadge = document.getElementById("dash-rag-badge");
+
+    var goRaw = flat ? pickMetricFirst(flat, ["status.goLiveReady", "overallStatus.goLiveReady"]) : undefined;
+    if (goRaw === undefined && banner.goLiveReady != null && String(banner.goLiveReady).trim() !== "") {
+      goRaw = banner.goLiveReady;
+    }
+    var gl = normalizeGoLiveReady(goRaw);
+    if (goliveWrap && goliveBadge) {
+      if (gl === "Yes" || gl === "No") {
+        goliveBadge.textContent = t("audit.goLiveBadge", { answer: gl === "Yes" ? "YES" : "NO" });
+        goliveBadge.className = "audit-rag audit-rag--" + (gl === "Yes" ? "green" : "red");
+        goliveBadge.setAttribute("aria-label", goliveBadge.textContent);
+        goliveWrap.hidden = false;
+      } else {
+        goliveBadge.textContent = "";
+        goliveBadge.className = "audit-rag";
+        goliveWrap.removeAttribute("aria-label");
+        goliveWrap.hidden = true;
+      }
+    }
+
+    var ragRaw = flat ? pickMetricFirst(flat, ["overallStatus.ragRating", "status.ragRating"]) : undefined;
+    if (ragRaw === undefined && banner.ragRating != null && String(banner.ragRating).trim() !== "") {
+      ragRaw = banner.ragRating;
+    }
+    var rag = normalizeRagRating(ragRaw != null ? String(ragRaw) : "");
+    if (ragWrap && ragBadge) {
+      if (rag === "Red" || rag === "Amber" || rag === "Green") {
+        ragBadge.textContent = t("audit.ragBadge", { rating: rag.toUpperCase() });
+        ragBadge.className = "audit-rag audit-rag--" + rag.toLowerCase();
+        ragBadge.setAttribute("aria-label", ragBadge.textContent);
+        ragWrap.hidden = false;
+      } else {
+        ragBadge.textContent = "";
+        ragBadge.className = "audit-rag";
+        ragWrap.removeAttribute("aria-label");
+        ragWrap.hidden = true;
+      }
+    }
   }
 
   function isAuditFieldEmpty(v) {
@@ -719,37 +783,49 @@ const THEME_STORAGE_KEY = "ui-audit-theme";
     if (isAuditFieldEmpty(b.repoUrl) && (v = pickMetric(f, "metadata.repoUrl")) != null) b.repoUrl = String(v);
     if (isAuditFieldEmpty(b.appUrl) && (v = pickMetric(f, "metadata.appUrl")) != null) b.appUrl = String(v);
     if (isAuditFieldEmpty(b.commitId) && (v = pickMetric(f, "metadata.commitId")) != null) b.commitId = String(v);
-    if (isAuditFieldEmpty(b.auditTimestamp) && (v = pickMetric(f, "metadata.auditTimestamp")) != null) {
+    if (isAuditFieldEmpty(b.auditTimestamp) && (v = pickMetricFirst(f, ["metadata.auditTimestamp", "metadata.auditDate"])) != null) {
       b.auditTimestamp = String(v);
     }
-    if (isAuditFieldEmpty(b.ragRating) && (v = pickMetric(f, "overallStatus.ragRating")) != null) {
+    if (isAuditFieldEmpty(b.ragRating) && (v = pickMetricFirst(f, ["overallStatus.ragRating", "status.ragRating"])) != null) {
       var normRag = normalizeRagRating(String(v));
       b.ragRating = normRag || String(v);
     }
+    if (isAuditFieldEmpty(b.goLiveReady) && (v = pickMetricFirst(f, ["status.goLiveReady", "overallStatus.goLiveReady"])) != null) {
+      var normGl = normalizeGoLiveReady(v);
+      b.goLiveReady = normGl != null ? normGl : String(v);
+    }
     if (!p.checklistSummaryMetrics) p.checklistSummaryMetrics = {};
     var c = p.checklistSummaryMetrics;
-    if (isAuditFieldEmpty(c.totalChecks) && (v = pickMetric(f, "summary.totalChecks")) != null) c.totalChecks = v;
-    if (isAuditFieldEmpty(c.passed) && (v = pickMetric(f, "summary.passed")) != null) c.passed = v;
-    if (isAuditFieldEmpty(c.failed) && (v = pickMetric(f, "summary.failed")) != null) c.failed = v;
-    if (isAuditFieldEmpty(c.notApplicable) && (v = pickMetric(f, "summary.notApplicable")) != null) {
+    if (isAuditFieldEmpty(c.totalChecks) && (v = pickMetricFirst(f, ["summary.overall.total", "summary.totalChecks"])) != null) {
+      c.totalChecks = v;
+    }
+    if (isAuditFieldEmpty(c.passed) && (v = pickMetricFirst(f, ["summary.overall.passed", "summary.passed"])) != null) {
+      c.passed = v;
+    }
+    if (isAuditFieldEmpty(c.failed) && (v = pickMetricFirst(f, ["summary.overall.failed", "summary.failed"])) != null) {
+      c.failed = v;
+    }
+    if (isAuditFieldEmpty(c.notApplicable) && (v = pickMetricFirst(f, ["summary.overall.notApplicable", "summary.notApplicable"])) != null) {
       c.notApplicable = v;
     }
-    if (isAuditFieldEmpty(c.criticalFailed) && (v = pickMetric(f, "summary.criticalFailed")) != null) {
+    if (isAuditFieldEmpty(c.criticalFailed) && (v = pickMetricFirst(f, ["summary.overall.criticalFailed", "summary.criticalFailed"])) != null) {
       c.criticalFailed = v;
     }
-    if (isAuditFieldEmpty(c.highFailed) && (v = pickMetric(f, "summary.highFailed")) != null) c.highFailed = v;
-    if (isAuditFieldEmpty(c.mediumFailed) && (v = pickMetric(f, "summary.mediumFailed")) != null) {
+    if (isAuditFieldEmpty(c.highFailed) && (v = pickMetricFirst(f, ["summary.overall.highFailed", "summary.highFailed"])) != null) {
+      c.highFailed = v;
+    }
+    if (isAuditFieldEmpty(c.mediumFailed) && (v = pickMetricFirst(f, ["summary.overall.mediumFailed", "summary.mediumFailed"])) != null) {
       c.mediumFailed = v;
     }
-    if (isAuditFieldEmpty(c.mandatoryFailed) && (v = pickMetric(f, "summary.mandatoryFailed")) != null) {
+    if (isAuditFieldEmpty(c.mandatoryFailed) && (v = pickMetricFirst(f, ["summary.overall.mandatoryFailed", "summary.mandatoryFailed"])) != null) {
       c.mandatoryFailed = v;
     }
     if (!p.passRates) p.passRates = {};
     var pr = p.passRates;
-    if (isAuditFieldEmpty(pr.mandatoryPassRate) && (v = pickMetric(f, "overallStatus.mandatoryPassRate")) != null) {
+    if (isAuditFieldEmpty(pr.mandatoryPassRate) && (v = pickMetricFirst(f, ["overallStatus.mandatoryPassRate", "status.mandatoryPassRate"])) != null) {
       pr.mandatoryPassRate = v;
     }
-    if (isAuditFieldEmpty(pr.criticalPassRate) && (v = pickMetric(f, "overallStatus.criticalPassRate")) != null) {
+    if (isAuditFieldEmpty(pr.criticalPassRate) && (v = pickMetricFirst(f, ["overallStatus.criticalPassRate", "status.criticalPassRate"])) != null) {
       pr.criticalPassRate = v;
     }
     if (isAuditFieldEmpty(p.projectName) && pickMetric(f, "metadata.projectName") != null) {
@@ -764,6 +840,15 @@ const THEME_STORAGE_KEY = "ui-audit-theme";
     return isFinite(n) ? n : null;
   }
 
+  function scoreFromFlatFirst(flat, keys) {
+    if (!keys || !keys.length) return null;
+    for (var i = 0; i < keys.length; i++) {
+      var n = scoreFromFlat(flat, keys[i]);
+      if (n != null) return n;
+    }
+    return null;
+  }
+
   function formatDomainScore(n) {
     if (n == null || !isFinite(n)) return "0";
     return Math.abs(n % 1) < 1e-9 ? String(Math.round(n)) : String(Math.round(n * 10) / 10);
@@ -772,15 +857,15 @@ const THEME_STORAGE_KEY = "ui-audit-theme";
   function deriveEdsDomainsFromMetrics(p) {
     if (!p || !p.metrics || typeof p.metrics !== "object" || p.ignoreMetricsDomains === true) return;
     var f = p.metrics;
-    if (pickMetric(f, "overallScores.uiQualityScore") == null) return;
+    if (pickMetric(f, "overallScores.uiQualityScore") == null && pickMetric(f, "scores.overall") == null) return;
     if (p.domains && p.domains.length > 0 && p.deriveDomainsFromMetrics !== true) return;
 
     function uxComplianceScore() {
-      var direct = scoreFromFlat(f, "overallScores.uxComplianceScore");
+      var direct = scoreFromFlatFirst(f, ["overallScores.uxComplianceScore", "scores.uxCompliance"]);
       if (direct != null) return direct;
-      var h = scoreFromFlat(f, "overallScores.htmlScore");
-      var c = scoreFromFlat(f, "overallScores.cssScore");
-      var j = scoreFromFlat(f, "overallScores.javascriptScore");
+      var h = scoreFromFlatFirst(f, ["overallScores.htmlScore", "scores.htmlImplementation"]);
+      var c = scoreFromFlatFirst(f, ["overallScores.cssScore", "scores.cssImplementation"]);
+      var j = scoreFromFlatFirst(f, ["overallScores.javascriptScore", "scores.javascriptImplementation"]);
       var parts = [];
       if (h != null) parts.push(h);
       if (c != null) parts.push(c);
@@ -796,25 +881,25 @@ const THEME_STORAGE_KEY = "ui-audit-theme";
         domainKey: "ui-quality",
         titleKey: "domain.ui-quality.title",
         subKey: "domain.ui-quality.subtitle",
-        scoreKey: "overallScores.uiQualityScore",
+        scoreKeys: ["overallScores.uiQualityScore", "scores.overall"],
       },
       {
         domainKey: "accessibility",
         titleKey: "domain.accessibility.title",
         subKey: "domain.accessibility.subtitle",
-        scoreKey: "overallScores.accessibilityScore",
+        scoreKeys: ["overallScores.accessibilityScore", "scores.accessibility"],
       },
       {
         domainKey: "performance",
         titleKey: "domain.performance.title",
         subKey: "domain.performance.subtitle",
-        scoreKey: "overallScores.performanceScore",
+        scoreKeys: ["overallScores.performanceScore", "scores.performance"],
       },
       {
         domainKey: "code-quality",
         titleKey: "domain.code-quality.title",
         subKey: "domain.code-quality.subtitle",
-        scoreKey: "overallScores.codeQualityScore",
+        scoreKeys: ["overallScores.codeQualityScore", "scores.codeQuality"],
       },
       {
         domainKey: "ux-compliance",
@@ -826,12 +911,13 @@ const THEME_STORAGE_KEY = "ui-audit-theme";
         domainKey: "security",
         titleKey: "domain.security.title",
         subKey: "domain.security.subtitle",
-        scoreKey: "overallScores.securityScore",
+        scoreKeys: ["overallScores.securityScore", "scores.security"],
       },
     ];
 
     p.domains = spec.map(function (row) {
-      var n = typeof row.scoreFn === "function" ? row.scoreFn() : scoreFromFlat(f, row.scoreKey);
+      var n =
+        typeof row.scoreFn === "function" ? row.scoreFn() : scoreFromFlatFirst(f, row.scoreKeys || []);
       return {
         title: t(row.titleKey),
         subtitle: t(row.subKey),
@@ -844,10 +930,10 @@ const THEME_STORAGE_KEY = "ui-audit-theme";
   function deriveHeadlineFieldsFromMetrics(p) {
     if (!p || !p.metrics || typeof p.metrics !== "object" || p.ignoreMetricsDomains === true) return;
     var f = p.metrics;
-    if (pickMetric(f, "overallScores.uiQualityScore") == null) return;
+    if (pickMetric(f, "overallScores.uiQualityScore") == null && pickMetric(f, "scores.overall") == null) return;
     if (p.preservePayloadHeadlines === true) return;
 
-    var tc = pickMetric(f, "summary.totalChecks");
+    var tc = pickMetricFirst(f, ["summary.overall.total", "summary.totalChecks"]);
     if (tc != null && isAuditFieldEmpty(p.checklistSummaryLine)) {
       var num = Number(tc);
       p.checklistSummaryLine =
@@ -856,7 +942,7 @@ const THEME_STORAGE_KEY = "ui-audit-theme";
         t("defaults.checklistTotalSuffix");
     }
 
-    var uiq = scoreFromFlat(f, "overallScores.uiQualityScore");
+    var uiq = scoreFromFlatFirst(f, ["overallScores.uiQualityScore", "scores.overall"]);
     if (uiq != null) {
       if (isAuditFieldEmpty(p.totalComplianceValue)) {
         p.totalComplianceValue = formatDomainScore(uiq);
@@ -895,8 +981,6 @@ const THEME_STORAGE_KEY = "ui-audit-theme";
     if (drillProj) drillProj.textContent = fullTitle;
 
     var metaRoot = document.getElementById("dash-audit-meta");
-    var ragWrap = document.getElementById("dash-rag-wrap");
-    var ragBadge = document.getElementById("dash-rag-badge");
     if (metaRoot) {
       metaRoot.innerHTML = "";
       metaRoot.hidden = true;
@@ -944,21 +1028,7 @@ const THEME_STORAGE_KEY = "ui-audit-theme";
       metaRoot.hidden = !hasMeta;
     }
 
-    if (ragWrap && ragBadge) {
-      var ragRaw = flat["overallStatus.ragRating"];
-      var rag = normalizeRagRating(ragRaw != null ? String(ragRaw) : "");
-      if (rag === "Red" || rag === "Amber" || rag === "Green") {
-        ragBadge.textContent = t("audit.ragBadge", { rating: rag.toUpperCase() });
-        ragBadge.className = "audit-rag audit-rag--" + rag.toLowerCase();
-        ragBadge.setAttribute("aria-label", ragBadge.textContent);
-        ragWrap.hidden = false;
-      } else {
-        ragBadge.textContent = "";
-        ragBadge.className = "audit-rag";
-        ragWrap.removeAttribute("aria-label");
-        ragWrap.hidden = true;
-      }
-    }
+    syncDashStatusBadges(flat, auditPayload && auditPayload.auditBanner);
   }
 
   function renderMetricCategoryGrid(flat) {
@@ -985,8 +1055,8 @@ const THEME_STORAGE_KEY = "ui-audit-theme";
     renderBannerFromFlatMetrics(flat, auditPayload);
     renderMetricCategoryGrid(flat);
     var checklistEl = document.getElementById("dash-checklist-summary");
-    var tc = flat["summary.totalChecks"];
-    if (checklistEl && tc != null && tc !== "") {
+    var tc = pickMetricFirst(flat, ["summary.overall.total", "summary.totalChecks"]);
+    if (checklistEl && tc != null && tc !== undefined && String(tc).trim() !== "") {
       var num = Number(tc);
       checklistEl.textContent =
         (isFinite(num) ? num.toLocaleString(numberLocaleTag()) : String(tc)) +
@@ -996,7 +1066,7 @@ const THEME_STORAGE_KEY = "ui-audit-theme";
       checklistEl.textContent = auditPayload.checklistSummaryLine;
     }
     var totalEl = document.getElementById("dash-total-compliance");
-    var uiq = flat["overallScores.uiQualityScore"];
+    var uiq = pickMetricFirst(flat, ["scores.overall", "overallScores.uiQualityScore"]);
     if (totalEl && uiq != null && uiq !== "") {
       var u = Number(uiq);
       totalEl.textContent = isFinite(u) ? formatDomainScore(u) : String(uiq);
@@ -1109,8 +1179,6 @@ const THEME_STORAGE_KEY = "ui-audit-theme";
     if (drillProj) drillProj.textContent = fullTitle;
 
     var metaRoot = document.getElementById("dash-audit-meta");
-    var ragWrap = document.getElementById("dash-rag-wrap");
-    var ragBadge = document.getElementById("dash-rag-badge");
 
     if (metaRoot) {
       metaRoot.innerHTML = "";
@@ -1148,20 +1216,7 @@ const THEME_STORAGE_KEY = "ui-audit-theme";
       metaRoot.hidden = !hasMeta;
     }
 
-    if (ragWrap && ragBadge) {
-      var rag = normalizeRagRating(banner.ragRating != null ? banner.ragRating : "");
-      if (rag === "Red" || rag === "Amber" || rag === "Green") {
-        ragBadge.textContent = t("audit.ragBadge", { rating: rag.toUpperCase() });
-        ragBadge.className = "audit-rag audit-rag--" + rag.toLowerCase();
-        ragBadge.setAttribute("aria-label", ragBadge.textContent);
-        ragWrap.hidden = false;
-      } else {
-        ragBadge.textContent = "";
-        ragBadge.className = "audit-rag";
-        ragWrap.removeAttribute("aria-label");
-        ragWrap.hidden = true;
-      }
-    }
+    syncDashStatusBadges(null, banner);
   }
 
   function applyPayload(rawPayload) {

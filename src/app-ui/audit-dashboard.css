@@ -370,6 +370,15 @@
       margin-right: 48px;
     }
 
+    .audit-banner__status-tags {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .audit-banner__golive,
     .audit-banner__rag {
       flex-shrink: 0;
     }

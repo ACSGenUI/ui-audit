@@ -37,9 +37,15 @@ export function layoutDonutsRow() {
   return row;
 }
 
-export function layoutPillarsStack() {
+/**
+ * @param {{ variant?: "default" | "twoColumn" } | undefined} options - twoColumn = 2-column grid of pillar rows.
+ */
+export function layoutPillarsStack(options) {
   var el = document.createElement("div");
   el.className = "metric-category-pillars";
+  if (options && options.variant === "twoColumn") {
+    el.classList.add("metric-category-pillars--cols-2");
+  }
   return el;
 }
 

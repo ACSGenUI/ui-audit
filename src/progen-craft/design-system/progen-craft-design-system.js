@@ -10,6 +10,8 @@ import { paintMiniDonutSvg, appendMiniDonutBreakdownCard } from './components/mi
 import { appendStackedDistributionBar } from './components/stacked-bar.js';
 import { syncRowProgressUi } from './components/row-progress.js';
 import { createPdfDownloadControl } from './components/pdf-download.js';
+import { appendIssuesTable } from './components/issues-table.js';
+import { appendScoresBarChart } from './components/scores-bar-chart.js';
 import {
   PILLAR_ROW_SVGS,
   layoutCategoryCard,
@@ -38,11 +40,13 @@ export const ProgenCraftDesignSystem = {
   widgets: {
     syncRowProgressUi: syncRowProgressUi,
     createPdfDownloadControl: createPdfDownloadControl,
+    appendIssuesTable: appendIssuesTable,
   },
   charts: {
     paintMiniDonutSvg: paintMiniDonutSvg,
     appendMiniDonutBreakdownCard: appendMiniDonutBreakdownCard,
     appendStackedDistributionBar: appendStackedDistributionBar,
+    appendScoresBarChart: appendScoresBarChart,
   },
   layouts: {
     categoryCard: layoutCategoryCard,

@@ -81,13 +81,62 @@ function renderDashboardView(root, viewModel, env) {
       root.appendChild(shell);
       return;
     }
+    if (card.kind === "scoresBarChart") {
+      var scoresShell = DS.layouts.categoryCard({
+        categoryKey: card.categoryKey,
+        ariaLabel: card.ariaLabel,
+      });
+      scoresShell.classList.add("metric-category-card--scores");
+      scoresShell.appendChild(DS.layouts.categoryHeading(card.title));
+      var sbc = card.scoresBarChart && typeof card.scoresBarChart === "object" ? card.scoresBarChart : {};
+      if (typeof DS.charts.appendScoresBarChart === "function") {
+        DS.charts.appendScoresBarChart(scoresShell, {
+          items: sbc.items || [],
+          xMax: sbc.xMax,
+          tickStep: sbc.tickStep,
+          showGrid: sbc.showGrid,
+          showRowIndex: sbc.showRowIndex,
+          legendColumns: sbc.legendColumns,
+          showLegend: sbc.showLegend,
+          minBarLabelWidthPct: sbc.minBarLabelWidthPct,
+          formatValue: function (n) {
+            return formatPercentLabel(Number(n)) + "%";
+          },
+          ariaLabel: card.ariaLabel,
+        });
+      }
+      root.appendChild(scoresShell);
+      return;
+    }
+    if (card.kind === "issuesTable") {
+      var issuesCard = DS.layouts.categoryCard({
+        categoryKey: card.categoryKey,
+        ariaLabel: card.ariaLabel,
+      });
+      issuesCard.classList.add("metric-category-card--issues");
+      issuesCard.appendChild(DS.layouts.categoryHeading(card.title));
+      if (typeof DS.widgets.appendIssuesTable === "function") {
+        DS.widgets.appendIssuesTable(issuesCard, {
+          columns: card.columns || [],
+          rows: card.rows || [],
+        });
+      }
+      root.appendChild(issuesCard);
+      return;
+    }
     if (card.kind === "pillars") {
       var cardEl = DS.layouts.categoryCard({
         categoryKey: card.categoryKey,
         ariaLabel: card.ariaLabel,
       });
       cardEl.appendChild(DS.layouts.categoryHeading(card.title));
-      var pillars = DS.layouts.pillarsStack();
+      var pillarsLayout =
+        card.pillarsLayout && typeof card.pillarsLayout === "object"
+          ? card.pillarsLayout
+          : card.pillarsVariant === "twoColumn"
+            ? { variant: "twoColumn" }
+            : undefined;
+      var pillars = DS.layouts.pillarsStack(pillarsLayout);
       (card.rows || []).forEach(function (r, idx) {
         var row = DS.layouts.pillarRow({
           iconIndex: idx,
