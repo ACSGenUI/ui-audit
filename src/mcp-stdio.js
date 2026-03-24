@@ -1,15 +1,61 @@
 #!/usr/bin/env node
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server';
 import { z } from 'zod';
 import LockManager from './lock-manager.js';
 import CsvManager from './csv-manager.js';
 import LocalAuditTool from './local-audit-tool.js';
 import { validatePayload } from './validator.js';
 import { readFile, writeFile, copyFile, access, mkdir, readdir, unlink } from 'fs/promises';
-import { resolve } from 'path';
+import { dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
 import config from './config.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const PRODUCT_AUDIT_DASHBOARD_URI = 'ui://ui-audit/audit-dashboard.html';
+const auditDashboardHtmlPath = resolve(__dirname, 'app-ui', 'audit-dashboard.html');
+const auditDashboardCssPath = resolve(__dirname, 'app-ui', 'audit-dashboard.css');
+const auditDashboardJsPath = resolve(__dirname, 'app-ui', 'audit-dashboard.js');
+const auditDashboardI18nPath = resolve(__dirname, 'app-ui', 'audit-dashboard-i18n.js');
+
+async function buildAuditDashboardContents(uri, variables) {
+  let html = await readFile(auditDashboardHtmlPath, 'utf-8');
+  const [css, js, i18nJs] = await Promise.all([
+    readFile(auditDashboardCssPath, 'utf-8'),
+    readFile(auditDashboardJsPath, 'utf-8'),
+    readFile(auditDashboardI18nPath, 'utf-8'),
+  ]);
+  html = html.replace(
+    /<link\s+rel=["']stylesheet["']\s+href=["']audit-dashboard\.css["']\s*\/?>/i,
+    `<style>\n${css.trimEnd()}\n</style>`
+  );
+  html = html.replace(
+    /<script\s+src=["']audit-dashboard-i18n\.js["']\s*><\/script>/i,
+    `<script>\n${i18nJs.trimEnd()}\n</script>`
+  );
+  html = html.replace(
+    /<script\s+src=["']audit-dashboard\.js["']\s+defer\s*><\/script>/i,
+    `<script defer>\n${js.trimEnd()}\n</script>`
+  );
+  const raw = variables?.data ?? uri.searchParams.get('data');
+  if (raw) {
+    try {
+      const parsed = JSON.parse(decodeURIComponent(raw));
+      const safe = JSON.stringify(parsed).replace(/</g, '\\u003c');
+      html = html.replace(
+        '</body>',
+        `<script>window.__PRODUCT_AUDIT_DASHBOARD__=${safe};</script></body>`
+      );
+    } catch {
+      /* keep default HTML */
+    }
+  }
+  return {
+    contents: [{ uri: uri.href, mimeType: RESOURCE_MIME_TYPE, text: html }],
+  };
+}
 
 
 const lockManager = new LockManager();
@@ -48,6 +94,28 @@ server.registerResource(
     const content = await readFile(resolve(config.templatesDir, config.templates['metrics']), 'utf-8');
     return { contents: [{ uri: uri.href, mimeType: 'text/csv', text: content }] };
   }
+);
+
+registerAppResource(
+  server,
+  'Product Audit Dashboard',
+  PRODUCT_AUDIT_DASHBOARD_URI,
+  {
+    description:
+      'Interactive MCP App view for product UI audit results: checklist summary, total compliance score, domain donut chart, and drill-down domain rows.',
+  },
+  async (uri) => buildAuditDashboardContents(uri, undefined)
+);
+
+server.registerResource(
+  'Product Audit Dashboard (parameterized)',
+  new ResourceTemplate(`${PRODUCT_AUDIT_DASHBOARD_URI}{?data}`, {}),
+  {
+    description:
+      'Same product audit dashboard HTML with URL-encoded JSON in the data query param (tool-driven payload).',
+    mimeType: RESOURCE_MIME_TYPE,
+  },
+  async (uri, variables) => buildAuditDashboardContents(uri, variables)
 );
 
 // ── Prompts ──
@@ -276,6 +344,124 @@ Count "No" rows matching the relevant Group + Sub-Group + checklist item keyword
 );
 
 // ── Tools ──
+
+const drilldownMetricSchema = z.object({
+  metric: z.string().describe('Row label in the Metric column.'),
+  compliance: z.string().describe('Compliance status text, e.g. Yes, No, Partial.'),
+  score: z.union([z.number(), z.string()]).describe('Numeric score 0–100; color: red if under 40, amber 40–89, green 90+.'),
+});
+
+const auditDomainRowSchema = z.object({
+  title: z.string(),
+  subtitle: z.string().optional(),
+  value: z.union([z.string(), z.number()]),
+  passed: z
+    .union([z.number(), z.string()])
+    .optional()
+    .describe('Passed checklist count for this domain (pair with total); shown as passed/total with a progress bar.'),
+  total: z
+    .union([z.number(), z.string()])
+    .optional()
+    .describe('Total checklist items for this domain; progress bar uses passed/total. If omitted with passed, defaults are derived from the score value.'),
+  domainKey: z
+    .string()
+    .optional()
+    .describe('Stable id for drill-down metrics (slug, e.g. ui-quality). Defaults from title if omitted.'),
+  metrics: z
+    .array(drilldownMetricSchema)
+    .optional()
+    .describe('Optional metric rows for the domain drill-down table (Metric, Compliance, Score).'),
+  iconBg: z.string().optional(),
+  iconSvg: z.string().optional(),
+});
+
+registerAppTool(
+  server,
+  'show-product-audit-dashboard',
+  {
+    title: 'Product audit dashboard',
+    description:
+      'Opens the Product Audit MCP App: project name on overview and drill-down, checklist summary line, aggregate compliance score, domain donut chart, and domain rows (UI Quality, Accessibility, Performance, Code Quality, UX Compliance, Security). Each row shows a score, passed/total checklist counts, and a progress bar. Rows drill down to metric tables. Pass optional projectName, domains[] with optional domainKey, passed, total, and metrics[]; overviewCenterPercent sets the default donut center before hover.',
+    inputSchema: {
+      projectName: z
+        .string()
+        .optional()
+        .describe('Project or product name shown at the top of the overview and drill-down views.'),
+      checklistSummaryLine: z
+        .string()
+        .optional()
+        .describe('Line under the section title, e.g. number of checklist items audited.'),
+      totalComplianceValue: z
+        .union([z.number(), z.string()])
+        .optional()
+        .describe('Aggregate compliance figure shown beside the label (default: 81).'),
+      overviewCenterPercent: z
+        .number()
+        .optional()
+        .describe('Default donut center percentage before segment hover (default: average of domain scores).'),
+      locale: z
+        .string()
+        .optional()
+        .describe('Dashboard UI language (e.g. "en", "es"). Labels and default drill-down copy follow this locale.'),
+      domains: z
+        .array(auditDomainRowSchema)
+        .optional()
+        .describe(
+          'Audit domain rows: title, subtitle, score value; optional passed/total checklist counts (shown as passed/total with a bar); optional domainKey and metrics for drill-down.'
+        ),
+    },
+    _meta: { ui: { resourceUri: PRODUCT_AUDIT_DASHBOARD_URI } },
+  },
+  async (args) => {
+    const defaults = {
+      projectName: 'Example Project Audit Report',
+      checklistSummaryLine: '1,240 Total Checklist',
+      totalComplianceValue: 81,
+    };
+    const defaultDomains = [
+      { title: 'UI Quality', subtitle: 'Visual design, consistency', value: '78', passed: 39, total: 50 },
+      { title: 'Accessibility', subtitle: 'WCAG, keyboard, assistive tech', value: '82', passed: 41, total: 50 },
+      { title: 'Performance', subtitle: 'Load, runtime, assets', value: '71', passed: 36, total: 50 },
+      { title: 'Code Quality', subtitle: 'Structure, linting, patterns', value: '88', passed: 44, total: 50 },
+      { title: 'UX Compliance', subtitle: 'Flows, heuristics, standards', value: '76', passed: 38, total: 50 },
+      { title: 'Security', subtitle: 'Headers, policies, data handling', value: '90', passed: 45, total: 50 },
+    ];
+    const domains = args?.domains?.length ? args.domains : defaultDomains;
+    const avgCenter = Math.round(
+      domains.reduce((s, c) => s + Number(c.value), 0) / domains.length
+    );
+    const payload = {
+      projectName: args?.projectName ?? defaults.projectName,
+      checklistSummaryLine: args?.checklistSummaryLine ?? defaults.checklistSummaryLine,
+      totalComplianceValue: args?.totalComplianceValue ?? defaults.totalComplianceValue,
+      overviewCenterPercent:
+        args?.overviewCenterPercent ?? (Number.isFinite(avgCenter) ? avgCenter : 81),
+      domains,
+      ...(args?.locale != null && args.locale !== '' ? { locale: args.locale } : {}),
+    };
+    const dataJson = JSON.stringify(payload);
+    const dataEnc = encodeURIComponent(dataJson);
+    const resourceWithData =
+      dataJson.length < 6000
+        ? `${PRODUCT_AUDIT_DASHBOARD_URI}?data=${dataEnc}`
+        : PRODUCT_AUDIT_DASHBOARD_URI;
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Product audit dashboard: ${payload.checklistSummaryLine}; aggregate compliance ${typeof payload.totalComplianceValue === 'number' ? payload.totalComplianceValue.toLocaleString('en-US') : payload.totalComplianceValue}; overview center ${payload.overviewCenterPercent}%. ${payload.domains.length} domain rows.`,
+        },
+      ],
+      structuredContent: {
+        productAuditDashboard: payload,
+      },
+      _meta: {
+        ui: { resourceUri: resourceWithData },
+      },
+    };
+  }
+);
 
 server.registerTool(
   'set-audit-workspace',
