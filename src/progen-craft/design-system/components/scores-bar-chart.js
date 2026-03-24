@@ -9,7 +9,10 @@
  *   showRowIndex?: boolean,
  *   legendColumns?: number, // default 1 (compact single column in right rail)
  *   showLegend?: boolean,
+ *   hideLegend?: boolean, // app-friendly alias: when true, legend is omitted (chart uses full width)
+ *   showBarValueOnHover?: boolean, // default true when legend hidden: show % in a hover tip on each row
  *   formatValue?: (n: number) => string,
+ *   formatBarHoverTitle?: (item: { label: string, value: number }, formatValue: (n: number) => string) => string,
  *   minBarLabelWidthPct?: number,
  *   ariaLabel?: string,
  * }} config
@@ -25,7 +28,13 @@ export function appendScoresBarChart(parent, config) {
   var showGrid = config.showGrid !== false;
   var showRowIndex = config.showRowIndex !== false;
   var legendCols = config.legendColumns != null ? Math.max(1, Math.floor(Number(config.legendColumns))) : 1;
-  var showLegend = config.showLegend !== false;
+  var showLegend = config.hideLegend === true ? false : config.showLegend !== false;
+  var showBarHover =
+    config.showBarValueOnHover === true
+      ? true
+      : config.showBarValueOnHover === false
+        ? false
+        : !showLegend;
   var formatVal =
     typeof config.formatValue === "function"
       ? config.formatValue
@@ -37,15 +46,27 @@ export function appendScoresBarChart(parent, config) {
       ? Number(config.minBarLabelWidthPct)
       : 14;
 
+  var formatHoverTitle =
+    typeof config.formatBarHoverTitle === "function"
+      ? config.formatBarHoverTitle
+      : function (it, fv) {
+          return it.label + " · " + fv(Number(it.value));
+        };
+
   var root = document.createElement("div");
-  root.className = "pc-scores-bar-chart";
+  root.className = "pc-scores-bar-chart" + (!showLegend ? " pc-scores-bar-chart--no-legend" : "");
+  if (showBarHover) {
+    root.classList.add("pc-scores-bar-chart--hover-values");
+  }
   if (config.ariaLabel) {
     root.setAttribute("aria-label", config.ariaLabel);
-    root.setAttribute("role", "img");
+    if (!showBarHover) {
+      root.setAttribute("role", "img");
+    }
   }
 
   var main = document.createElement("div");
-  main.className = "pc-scores-bar-chart__main";
+  main.className = "pc-scores-bar-chart__main" + (!showLegend ? " pc-scores-bar-chart__main--chart-only" : "");
 
   var chartCol = document.createElement("div");
   chartCol.className = "pc-scores-bar-chart__chart";
@@ -103,7 +124,8 @@ export function appendScoresBarChart(parent, config) {
     }
 
     var trackOuter = document.createElement("div");
-    trackOuter.className = "pc-scores-bar-chart__track-outer";
+    trackOuter.className =
+      "pc-scores-bar-chart__track-outer" + (showBarHover ? " pc-scores-bar-chart__track-outer--hoverable" : "");
     var track = document.createElement("div");
     track.className = "pc-scores-bar-chart__track";
     var v = Math.max(0, Math.min(xMax, Number(item.value)));
@@ -112,6 +134,9 @@ export function appendScoresBarChart(parent, config) {
     bar.className = "pc-scores-bar-chart__bar";
     bar.style.width = pct + "%";
     bar.style.background = item.color || "var(--focus-ring, #6366f1)";
+    if (showBarHover) {
+      row.setAttribute("title", formatHoverTitle(item, formatVal));
+    }
     if (pct >= minInsidePct) {
       var inLab = document.createElement("span");
       inLab.className = "pc-scores-bar-chart__bar-label pc-scores-bar-chart__bar-label--inside";
@@ -126,6 +151,18 @@ export function appendScoresBarChart(parent, config) {
       track.appendChild(outLab);
     }
     trackOuter.appendChild(track);
+    if (showBarHover) {
+      var tip = document.createElement("span");
+      tip.className = "pc-scores-bar-chart__hover-tip";
+      tip.textContent = formatVal(v);
+      tip.setAttribute("aria-hidden", "true");
+      if (pct >= 88) {
+        tip.classList.add("pc-scores-bar-chart__hover-tip--flush-end");
+      } else {
+        tip.style.left = "calc(" + pct + "% + 8px)";
+      }
+      trackOuter.appendChild(tip);
+    }
     row.appendChild(trackOuter);
     rowsEl.appendChild(row);
   });

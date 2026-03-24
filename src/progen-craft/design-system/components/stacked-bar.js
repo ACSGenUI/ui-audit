@@ -43,7 +43,9 @@ export function appendStackedDistributionBar(parent, model, options) {
     labelTrack.appendChild(lab);
     var segEl = document.createElement("div");
     segEl.className = "pc-stacked-bar__seg";
-    segEl.style.width = pct + "%";
+    /* flex-basis % so segment width matches data (width alone can collapse in flex row). */
+    segEl.style.flex = "0 0 " + pct + "%";
+    segEl.style.maxWidth = pct + "%";
     var fill = document.createElement("div");
     fill.className = "pc-stacked-bar__seg-fill " + (seg.textClass || "");
     fill.style.background = seg.color;

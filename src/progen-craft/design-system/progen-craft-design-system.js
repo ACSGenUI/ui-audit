@@ -14,6 +14,7 @@ import { appendIssuesTable } from './components/issues-table.js';
 import { appendScoresBarChart } from './components/scores-bar-chart.js';
 import {
   PILLAR_ROW_SVGS,
+  RISK_PILLAR_ICONS,
   layoutCategoryCard,
   layoutCategoryHeading,
   layoutCompositeShell,
@@ -58,5 +59,6 @@ export const ProgenCraftDesignSystem = {
   },
   tokens: {
     PILLAR_ROW_SVGS: PILLAR_ROW_SVGS,
+    RISK_PILLAR_ICONS: RISK_PILLAR_ICONS,
   },
 };

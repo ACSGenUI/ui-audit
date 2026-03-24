@@ -1,6 +1,23 @@
 import { sectorPath } from '../utils/geometry.js';
 import { prefersReducedMotion } from '../utils/motion.js';
 
+/** Full annulus as two 180° paths (single 360° SVG arcs are degenerate when start=end). */
+function appendAnnulusTwoHalves(svg, cx, cy, r0, r1, className, delayForIndex) {
+  var halves = [
+    [-Math.PI / 2, Math.PI / 2],
+    [Math.PI / 2, (3 * Math.PI) / 2],
+  ];
+  for (var h = 0; h < halves.length; h++) {
+    var p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    p.setAttribute("d", sectorPath(cx, cy, r0, r1, halves[h][0], halves[h][1]));
+    p.setAttribute("class", className);
+    if (typeof delayForIndex === "function") {
+      p.style.setProperty("--donut-enter-delay", delayForIndex(h));
+    }
+    svg.appendChild(p);
+  }
+}
+
 export function paintMiniDonutSvg(svg, sliceCounts) {
   while (svg.firstChild) svg.removeChild(svg.firstChild);
   var cx = 50;
@@ -11,17 +28,46 @@ export function paintMiniDonutSvg(svg, sliceCounts) {
   var sum = 0;
   for (var i = 0; i < sliceCounts.length; i++) sum += Math.max(0, sliceCounts[i].count);
   if (sum <= 0) {
-    var pathEmpty = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    pathEmpty.setAttribute("d", sectorPath(cx, cy, r0, r1, -Math.PI / 2, 1.5 * Math.PI));
-    pathEmpty.setAttribute("fill", "var(--pc-mini-donut-empty)");
-    pathEmpty.setAttribute("class", "donut-seg donut-seg--animate-in");
-    svg.appendChild(pathEmpty);
+    appendAnnulusTwoHalves(
+      svg,
+      cx,
+      cy,
+      r0,
+      r1,
+      "donut-seg donut-seg--animate-in donut-slice--empty donut-slice--ring-half",
+      function (idx) {
+        return prefersReducedMotion() ? "0ms" : idx * 40 + "ms";
+      }
+    );
     return;
   }
+  appendAnnulusTwoHalves(svg, cx, cy, r0, r1, "donut-slice--track donut-slice--ring-half");
+  var trackEls = svg.querySelectorAll(".donut-slice--track");
+  for (var te = 0; te < trackEls.length; te++) {
+    trackEls[te].setAttribute("aria-hidden", "true");
+  }
+
   var active = sliceCounts.filter(function (s) {
     return s.count > 0;
   });
   if (!active.length) return;
+  /* One non-zero slice (e.g. 100% passed): use two semicircle annuli, not one 360° arc. */
+  if (active.length === 1) {
+    var only = active[0];
+    var sliceKey = only.key || "slice";
+    appendAnnulusTwoHalves(
+      svg,
+      cx,
+      cy,
+      r0,
+      r1,
+      "donut-seg donut-seg--animate-in donut-slice--" + sliceKey + " donut-slice--ring-half",
+      function (idx) {
+        return prefersReducedMotion() ? "0ms" : idx * 40 + "ms";
+      }
+    );
+    return;
+  }
   var totalGaps = Math.max(0, active.length - 1) * gapRad;
   var avail = Math.max(0.01, 2 * Math.PI - totalGaps);
   var angleCursor = -Math.PI / 2 + gapRad / 2;
@@ -33,8 +79,8 @@ export function paintMiniDonutSvg(svg, sliceCounts) {
     angleCursor = a1 + gapRad;
     var path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.setAttribute("d", sectorPath(cx, cy, r0, r1, a0, a1));
-    path.setAttribute("fill", active[j].color || "#94a3b8");
-    path.setAttribute("class", "donut-seg donut-seg--animate-in");
+    var sliceKey = active[j].key || "slice";
+    path.setAttribute("class", "donut-seg donut-seg--animate-in donut-slice--" + sliceKey);
     path.style.setProperty("--donut-enter-delay", prefersReducedMotion() ? "0ms" : j * 40 + "ms");
     svg.appendChild(path);
   }
@@ -75,10 +121,10 @@ export function appendMiniDonutBreakdownCard(parent, options) {
   }
   svg.setAttribute("aria-label", title + (ariaParts.length ? ". " + ariaParts.join(", ") : ""));
   var sliceSpec = [
-    { count: passed, color: "var(--pc-mini-donut-slice-1)" },
-    { count: failed, color: "var(--pc-mini-donut-slice-2)" },
+    { count: passed, key: "passed" },
+    { count: failed, key: "failed" },
   ];
-  if (other > 0) sliceSpec.push({ count: other, color: "var(--pc-mini-donut-slice-3)" });
+  if (other > 0) sliceSpec.push({ count: other, key: "other" });
   paintMiniDonutSvg(svg, sliceSpec);
   var center = document.createElement("div");
   center.className = "pc-mini-donut-center";
@@ -104,21 +150,27 @@ export function appendMiniDonutBreakdownCard(parent, options) {
     var lab = document.createElement("div");
     lab.className = "pc-mini-donut-legend__label";
     lab.textContent = label;
-    var pill = document.createElement("div");
-    pill.className = "pc-mini-donut-legend__pill";
-    pill.style.background = colorVar;
+    var frac = denom > 0 ? count / denom : 0;
+    var pctW = Math.min(100, Math.max(0, 100 * frac));
+    var track = document.createElement("div");
+    track.className = "pc-mini-donut-legend__pill-track";
+    track.setAttribute("role", "presentation");
+    var pillFill = document.createElement("div");
+    pillFill.className = "pc-mini-donut-legend__pill-fill";
+    pillFill.style.background = colorVar;
+    pillFill.style.width = pctW + "%";
+    track.appendChild(pillFill);
     var val = document.createElement("div");
     val.className = "pc-mini-donut-legend__pct";
-    var frac = denom > 0 ? count / denom : 0;
     val.textContent = t("metrics.summary.pctLegend", { n: formatPct(100 * frac) });
     col.appendChild(lab);
-    col.appendChild(pill);
+    col.appendChild(track);
     col.appendChild(val);
     legend.appendChild(col);
   }
   if (total > 0) {
-    addLegendRow(t("insights.row.passed"), "var(--pc-mini-donut-slice-1)", passed, total);
-    addLegendRow(t("insights.row.failed"), "var(--pc-mini-donut-slice-2)", failed, total);
+    addLegendRow(t("insights.row.passed"), "var(--pc-mini-donut-passed)", passed, total);
+    addLegendRow(t("insights.row.failed"), "var(--pc-mini-donut-failed)", failed, total);
     if (other > 0) addLegendRow(t("metrics.summary.otherSlice"), "var(--pc-mini-donut-slice-3)", other, total);
   } else {
     var empty = document.createElement("div");

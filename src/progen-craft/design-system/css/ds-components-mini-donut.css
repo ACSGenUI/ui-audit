@@ -16,8 +16,10 @@
 
 .pc-mini-donut-wrap {
   position: relative;
-  width: 132px;
-  height: 132px;
+  width: min(100%, 9.25rem);
+  max-width: 150px;
+  aspect-ratio: 1;
+  height: auto;
   margin: 0 auto 14px;
 }
 
@@ -30,6 +32,52 @@
 .pc-mini-donut-svg .donut-seg {
   stroke: var(--insight-card-bg);
   stroke-width: 1.35;
+}
+
+.pc-mini-donut-svg .donut-slice--track {
+  fill: var(--pc-mini-donut-empty);
+  stroke: none;
+  pointer-events: none;
+}
+
+/* Full rings built as two semicircles: avoid stroke gaps; fade only (transform scale hides arcs in some SVG hosts). */
+@keyframes pc-mini-donut-ring-half-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.pc-mini-donut-svg .donut-slice--ring-half.donut-seg.donut-seg--animate-in {
+  stroke: none;
+  transform: none;
+  animation-name: pc-mini-donut-ring-half-enter;
+  animation-duration: 0.48s;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  animation-fill-mode: both;
+  animation-delay: var(--donut-enter-delay, 0ms);
+}
+
+.pc-mini-donut-svg .donut-slice--empty {
+  fill: var(--pc-mini-donut-empty);
+}
+
+.pc-mini-donut-svg .donut-slice--passed {
+  fill: var(--pc-mini-donut-passed);
+}
+
+.pc-mini-donut-svg .donut-slice--failed {
+  fill: var(--pc-mini-donut-failed);
+}
+
+.pc-mini-donut-svg .donut-slice--other {
+  fill: var(--pc-mini-donut-slice-3);
+}
+
+.pc-mini-donut-svg .donut-slice--slice {
+  fill: var(--pc-mini-donut-slice-1);
 }
 
 .pc-mini-donut-center {
@@ -70,10 +118,20 @@
   color: var(--text);
 }
 
-.pc-mini-donut-legend__pill {
-  height: 5px;
+.pc-mini-donut-legend__pill-track {
+  height: 6px;
   border-radius: 999px;
   margin: 6px 0 5px;
+  background: var(--score-bar-track, #e2e8f0);
+  overflow: hidden;
+}
+
+.pc-mini-donut-legend__pill-fill {
+  height: 100%;
+  min-width: 0;
+  max-width: 100%;
+  border-radius: 999px;
+  transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .pc-mini-donut-legend__pct {

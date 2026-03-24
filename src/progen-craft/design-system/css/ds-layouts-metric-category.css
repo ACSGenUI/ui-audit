@@ -62,7 +62,7 @@
 }
 
 .metric-category-pillar {
-  align-items: flex-start;
+  align-items: center;
 }
 
 .metric-category-pillar:last-child {
@@ -81,7 +81,7 @@
 }
 
 .metric-category-pillar .row-head {
-  align-items: flex-start;
+  align-items: center;
 }
 
 .metric-category-pillar .row-title {
@@ -96,6 +96,87 @@
   font-size: 0.6875rem;
 }
 
+/* Risk category: circular icon wash + tonal status pill (reference: category + pill table). */
+.metric-category-pillar--risk .icon-box--risk {
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.metric-category-pillar--risk .icon-box--risk svg {
+  color: inherit;
+}
+
+.metric-category-pillar--risk .icon-box--risk-high {
+  background: #ffe4e6;
+  color: #be123c;
+}
+
+.metric-category-pillar--risk .icon-box--risk-medium {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.metric-category-pillar--risk .icon-box--risk-low {
+  background: #d1fae5;
+  color: #047857;
+}
+
+.metric-category-pillar--risk .row-value--risk-pill {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 5px 11px;
+  border-radius: 999px;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+
+.metric-category-pillar--risk .row-value--risk-pill--high {
+  background: #ffe4e6;
+  color: #9f1239;
+}
+
+.metric-category-pillar--risk .row-value--risk-pill--medium {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.metric-category-pillar--risk .row-value--risk-pill--low {
+  background: #d1fae5;
+  color: #047857;
+}
+
+:root[data-theme="dark"] .metric-category-pillar--risk .icon-box--risk-high {
+  background: color-mix(in srgb, #f43f5e 22%, transparent);
+  color: #fda4af;
+}
+
+:root[data-theme="dark"] .metric-category-pillar--risk .icon-box--risk-medium {
+  background: color-mix(in srgb, #fb923c 22%, transparent);
+  color: #fdba74;
+}
+
+:root[data-theme="dark"] .metric-category-pillar--risk .icon-box--risk-low {
+  background: color-mix(in srgb, #34d399 22%, transparent);
+  color: #6ee7b7;
+}
+
+:root[data-theme="dark"] .metric-category-pillar--risk .row-value--risk-pill--high {
+  background: color-mix(in srgb, #f43f5e 24%, transparent);
+  color: #fda4af;
+}
+
+:root[data-theme="dark"] .metric-category-pillar--risk .row-value--risk-pill--medium {
+  background: color-mix(in srgb, #fb923c 24%, transparent);
+  color: #fdba74;
+}
+
+:root[data-theme="dark"] .metric-category-pillar--risk .row-value--risk-pill--low {
+  background: color-mix(in srgb, #34d399 24%, transparent);
+  color: #6ee7b7;
+}
+
 .metric-category-card--composite,
 .metric-category-card--issues,
 .metric-category-card--scores {
@@ -106,58 +187,22 @@
   pointer-events: none;
 }
 
+/* Summary donuts: fluid columns (override --composite-donut-cols on host if needed). */
 .metric-composite-donuts {
+  --composite-donut-cols: 3;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(var(--composite-donut-cols), minmax(0, 1fr));
+  gap: clamp(10px, 2.2vw, 16px);
   margin-bottom: 22px;
 }
 
-/* Third donut (Manual Audit): full-width row under Browser + Code. */
-.metric-composite-donuts > .pc-mini-donut-card:nth-child(3) {
-  grid-column: 1 / -1;
+.metric-composite-donuts .pc-mini-donut-card {
+  min-width: 0;
+  padding: clamp(12px, 2vw, 16px) clamp(10px, 1.8vw, 14px) 12px;
 }
 
-@media (min-width: 521px) {
-  .metric-composite-donuts > .pc-mini-donut-card:nth-child(3) {
-    display: flex;
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: center;
-    column-gap: 32px;
-    row-gap: 12px;
-    padding: 18px 20px;
-  }
-
-  .metric-composite-donuts > .pc-mini-donut-card:nth-child(3) .pc-mini-donut-card__title {
-    flex: 0 0 100%;
-    margin-bottom: 0;
-    text-align: center;
-  }
-
-  .metric-composite-donuts > .pc-mini-donut-card:nth-child(3) .pc-mini-donut-wrap {
-    margin-bottom: 0;
-  }
-
-  .metric-composite-donuts > .pc-mini-donut-card:nth-child(3) .pc-mini-donut-legend {
-    flex: 1 1 min(260px, 100%);
-    max-width: 420px;
-  }
-}
-
-@media (max-width: 900px) {
+@media (max-width: 480px) {
   .metric-composite-donuts {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 520px) {
-  .metric-composite-donuts {
-    grid-template-columns: 1fr;
-  }
-
-  .metric-composite-donuts > .pc-mini-donut-card:nth-child(3) {
-    grid-column: auto;
+    --composite-donut-cols: 1;
   }
 }

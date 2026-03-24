@@ -25,6 +25,15 @@ export function formatPercentLabel(pct) {
   return Math.abs(rounded % 1) < 0.05 ? String(Math.round(rounded)) : String(rounded);
 }
 
+/** Maps display values like High / Medium / Low to pillar row styling (risk category). */
+export function normalizeRiskLevelFromValue(raw) {
+  var s = String(raw == null ? "" : raw).trim().toLowerCase();
+  if (s === "high" || s === "critical" || s === "severe") return "high";
+  if (s === "medium" || s === "med" || s === "moderate" || s === "mid") return "medium";
+  if (s === "low" || s === "minimal" || s === "none") return "low";
+  return null;
+}
+
 function pickFlatMetricNumber(flat, key) {
   if (!flat || flat[key] === undefined || flat[key] === null || flat[key] === "") return NaN;
   var n = Number(flat[key]);
@@ -110,10 +119,20 @@ export function buildStackedDistributionModelFromFlat(flat, t) {
   return null;
 }
 
+function primaryPathFromEvidence(evidence) {
+  if (evidence == null || evidence === "") return "";
+  var s = String(evidence).trim();
+  if (!s || /^n\/?a$/i.test(s)) return "";
+  return s.split(",")[0].trim();
+}
+
 /**
- * Groups `topIssues.{n}.phase|description|severity|evidence` into table rows (sorted by n).
+ * Groups `topIssues.{n}.*` into table rows (sorted by n).
+ * Supports id, code, line, group, subGroup, auditType, phase, description, severity, evidence.
+ * @param {Record<string, unknown>} flat
+ * @param {{ (key: string, vars?: object): string } | undefined} t - i18n for location subline
  */
-export function buildTopIssuesTableRowsFromFlat(flat) {
+export function buildTopIssuesTableRowsFromFlat(flat, t) {
   var prefix = "topIssues.";
   var byIndex = {};
   if (!flat || typeof flat !== "object") return [];
@@ -134,15 +153,43 @@ export function buildTopIssuesTableRowsFromFlat(flat) {
     })
     .map(function (ix) {
       var r = byIndex[ix];
+      var id =
+        r.id != null && r.id !== ""
+          ? String(r.id).trim()
+          : r.code != null && r.code !== ""
+            ? String(r.code).trim()
+            : "";
+      var path = primaryPathFromEvidence(r.evidence);
+      var line = r.line != null && r.line !== "" ? String(r.line).trim() : "";
+      var locationSubline = "";
+      if (path) {
+        if (typeof t === "function") {
+          locationSubline = line ? t("metrics.topIssues.lineNumber", { n: line }) : t("metrics.topIssues.lineHint");
+        } else {
+          locationSubline = line ? "Line " + line : "Line";
+        }
+      }
       return {
         phase: r.phase || "",
         description: r.description || "",
         severity: r.severity || "",
         evidence: r.evidence || "",
+        id: id,
+        subGroup: r.subGroup || "",
+        locationPath: path,
+        locationSubline: locationSubline,
       };
     })
     .filter(function (r) {
-      return r.phase || r.description || r.severity || r.evidence;
+      return (
+        r.phase ||
+        r.description ||
+        r.severity ||
+        r.evidence ||
+        r.id ||
+        r.subGroup ||
+        r.locationPath
+      );
     });
 }
 
@@ -240,20 +287,22 @@ export function buildMetricsCategoryViewModel(flat, ctx) {
     if (cat === "browser" || cat === "code" || cat === "manual") return;
 
     if (cat === "topIssues") {
-      var issueRows = buildTopIssuesTableRowsFromFlat(flat);
+      var issueRows = buildTopIssuesTableRowsFromFlat(flat, t);
       if (!issueRows.length) return;
-      var tiTitle = M.humanizeSegment(cat);
+      var tiTitle = t("metrics.topIssues.tableTitle");
       var tiAria = t("metrics.openCategory", { name: tiTitle });
       cards.push({
         kind: "issuesTable",
         categoryKey: cat,
         title: tiTitle,
         ariaLabel: tiAria,
+        issuesTableVariant: "topIssues",
         columns: [
-          { key: "phase", label: t("metrics.topIssues.phase") },
-          { key: "description", label: t("metrics.topIssues.description") },
           { key: "severity", label: t("metrics.topIssues.severity") },
-          { key: "evidence", label: t("metrics.topIssues.evidence") },
+          { key: "id", label: t("metrics.topIssues.id") },
+          { key: "description", label: t("metrics.topIssues.description") },
+          { key: "location", label: t("metrics.topIssues.location") },
+          { key: "phase", label: t("metrics.topIssues.category") },
         ],
         rows: issueRows,
       });
@@ -263,19 +312,19 @@ export function buildMetricsCategoryViewModel(flat, ctx) {
     if (cat === "components") {
       var compRows = buildComponentsTableRowsFromFlat(flat);
       if (!compRows.length) return;
-      var compTitle = M.humanizeSegment(cat);
+      var compTitle = t("metrics.components.tableTitle");
       var compAria = t("metrics.openCategory", { name: compTitle });
       cards.push({
         kind: "issuesTable",
         categoryKey: cat,
         title: compTitle,
         ariaLabel: compAria,
+        issuesTableVariant: "components",
         columns: [
-          { key: "name", label: t("metrics.components.name") },
-          { key: "path", label: t("metrics.components.path") },
-          { key: "critical", label: t("metrics.components.critical") },
+          { key: "name", label: t("metrics.components.component") },
           { key: "failedChecks", label: t("metrics.components.failedChecks") },
-          { key: "healthScore", label: t("metrics.components.healthScore") },
+          { key: "critical", label: t("metrics.components.criticalFailures") },
+          { key: "healthScore", label: t("metrics.components.health") },
         ],
         rows: compRows,
       });
@@ -296,7 +345,7 @@ export function buildMetricsCategoryViewModel(flat, ctx) {
           items: scoreBarItems,
           xMax: 100,
           tickStep: 10,
-          legendColumns: 1,
+          hideLegend: true,
         },
       });
       return;
@@ -371,12 +420,15 @@ export function buildMetricsCategoryViewModel(flat, ctx) {
         var full = M.formatMetricRestPathLabel(r.restPath);
         if (full !== title) subText = full;
       }
+      var riskLevel =
+        cat === "risk" || cat === "riskIndex" ? normalizeRiskLevelFromValue(r.value) : null;
       return {
         title: title,
         subtitle: subText || "",
         valueText: scoreLike ? formatDomainScore(num) : formatMetricValue(r.value),
         scoreLike: scoreLike,
         numericScore: scoreLike ? num : null,
+        riskLevel: riskLevel,
       };
     });
 

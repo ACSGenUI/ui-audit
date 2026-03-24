@@ -98,6 +98,9 @@ function renderDashboardView(root, viewModel, env) {
           showRowIndex: sbc.showRowIndex,
           legendColumns: sbc.legendColumns,
           showLegend: sbc.showLegend,
+          hideLegend: sbc.hideLegend,
+          showBarValueOnHover: sbc.showBarValueOnHover,
+          formatBarHoverTitle: sbc.formatBarHoverTitle,
           minBarLabelWidthPct: sbc.minBarLabelWidthPct,
           formatValue: function (n) {
             return formatPercentLabel(Number(n)) + "%";
@@ -114,11 +117,24 @@ function renderDashboardView(root, viewModel, env) {
         ariaLabel: card.ariaLabel,
       });
       issuesCard.classList.add("metric-category-card--issues");
+      var issuesVariant =
+        card.issuesTableVariant === "components"
+          ? "components"
+          : card.issuesTableVariant === "topIssues"
+            ? "topIssues"
+            : null;
+      if (issuesVariant === "components") {
+        issuesCard.classList.add("metric-category-card--components");
+      }
+      if (issuesVariant === "topIssues") {
+        issuesCard.classList.add("metric-category-card--top-issues");
+      }
       issuesCard.appendChild(DS.layouts.categoryHeading(card.title));
       if (typeof DS.widgets.appendIssuesTable === "function") {
         DS.widgets.appendIssuesTable(issuesCard, {
           columns: card.columns || [],
           rows: card.rows || [],
+          variant: issuesVariant || undefined,
         });
       }
       root.appendChild(issuesCard);
@@ -144,6 +160,7 @@ function renderDashboardView(root, viewModel, env) {
           subtitle: r.subtitle,
           valueText: r.valueText,
           scoreLike: !!r.scoreLike,
+          riskLevel: r.riskLevel || null,
         });
         if (r.scoreLike && r.numericScore != null && isFinite(Number(r.numericScore))) {
           var domainLike = { value: DS.score.clampPct(Number(r.numericScore)) };

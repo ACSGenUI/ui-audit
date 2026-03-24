@@ -355,7 +355,7 @@ Count "No" rows matching the relevant Group + Sub-Group + checklist item keyword
 
 **Top issues** — up to 10
 - Select failed ("No") rows sorted by: Importance (Critical first → High → Medium) then Mandatory (Yes before No).
-- Fill \`topIssues.1\` through \`topIssues.10\` with: auditType (Code Audit / Browser Audit), severity (Importance value), mandatory, group, subGroup, description (Checklist Item text, truncated to 200 chars), evidence (Evidence column value).
+- Fill \`topIssues.1\` through \`topIssues.10\` with: auditType (Code Audit / Browser Audit), severity (Importance value), mandatory, group, subGroup, description (Checklist Item text, truncated to 200 chars), evidence (Evidence column value; first comma-separated path is shown in Location). Optional: \`id\` or \`code\` (issue id, e.g. DEV-SEMANTIC-DIV), \`line\` (source line; Location shows “Line {n}”), \`phase\` (category badge, e.g. Development / Accessibility).
 - Set \`topIssues.count\` = actual number of top issues written (max 10).
 
 **Components requiring attention** — up to 5

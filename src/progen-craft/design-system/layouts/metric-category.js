@@ -7,6 +7,18 @@ export const PILLAR_ROW_SVGS = [
   '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>',
 ];
 
+var riskSvgOpen =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+
+/** Line icons for risk pillar rows (High / Medium / Low); circular wash applied via CSS. */
+export const RISK_PILLAR_ICONS = {
+  high:
+    riskSvgOpen +
+    "<path d=\"M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z\"/><path d=\"M12 9v4M12 17h.01\"/></svg>",
+  medium: riskSvgOpen + '<circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>',
+  low: riskSvgOpen + '<circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-6"/></svg>',
+};
+
 export function layoutCategoryCard(options) {
   var card = document.createElement("article");
   card.className = "metric-category-card";
@@ -49,16 +61,34 @@ export function layoutPillarsStack(options) {
   return el;
 }
 
+/**
+ * @param {{
+ *   iconIndex?: number,
+ *   title: string,
+ *   subtitle?: string,
+ *   valueText: string,
+ *   scoreLike?: boolean,
+ *   riskLevel?: "high" | "medium" | "low" | null,
+ * }} options
+ */
 export function layoutPillarRow(options) {
   var svgs = PILLAR_ROW_SVGS;
   var rawIdx = Number(options.iconIndex);
   var idx = isFinite(rawIdx) ? Math.abs(Math.floor(rawIdx)) % svgs.length : 0;
+  var riskLevel = options.riskLevel;
+  var isRisk =
+    riskLevel === "high" || riskLevel === "medium" || riskLevel === "low";
   var row = document.createElement("div");
-  row.className = "row metric-category-pillar";
+  row.className = "row metric-category-pillar" + (isRisk ? " metric-category-pillar--risk" : "");
   var iconBox = document.createElement("div");
   iconBox.className = "icon-box";
-  iconBox.style.background = "var(--icon-row-" + (idx + 1) + ")";
-  iconBox.innerHTML = svgs[idx];
+  if (isRisk) {
+    iconBox.classList.add("icon-box--risk", "icon-box--risk-" + riskLevel);
+    iconBox.innerHTML = RISK_PILLAR_ICONS[riskLevel] || svgs[idx];
+  } else {
+    iconBox.style.background = "var(--icon-row-" + (idx + 1) + ")";
+    iconBox.innerHTML = svgs[idx];
+  }
   var body = document.createElement("div");
   body.className = "row-body";
   var head = document.createElement("div");
@@ -78,7 +108,7 @@ export function layoutPillarRow(options) {
   titles.appendChild(titleEl);
   titles.appendChild(subEl);
   var valEl = document.createElement("div");
-  valEl.className = "row-value";
+  valEl.className = "row-value" + (isRisk ? " row-value--risk-pill row-value--risk-pill--" + riskLevel : "");
   valEl.textContent = options.valueText;
   head.appendChild(titles);
   head.appendChild(valEl);

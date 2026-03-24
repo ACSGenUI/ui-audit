@@ -181,8 +181,8 @@
 
     .theme-toggle {
       position: absolute;
-      top: 16px;
-      right: 16px;
+      top: 22px;
+      right: 22px;
       z-index: 8;
       width: 40px;
       height: 40px;
@@ -304,10 +304,11 @@
 
     .audit-banner {
       display: flex;
-      align-items: flex-start;
+      align-items: stretch;
       justify-content: space-between;
       gap: 16px;
-      padding: 0 48px 18px;
+      /* Match card horizontal inset; extra right space for absolute theme toggle (40px + gap) */
+      padding: 0 calc(22px + 52px) 18px 22px;
       margin: 0 -22px 0;
       border-bottom: 1px solid var(--border-table);
     }
@@ -316,6 +317,7 @@
       min-width: 0;
       flex: 1;
       padding-right: 8px;
+      text-align: left;
     }
 
     .audit-banner__title {
@@ -365,9 +367,17 @@
       display: flex;
       flex-direction: column;
       align-items: flex-end;
+      justify-content: flex-start;
       gap: 10px;
       padding-top: 2px;
-      margin-right: 48px;
+      min-width: 0;
+    }
+
+    /* Download PDF: bottom-right of the banner (aside stretches to main height). */
+    .audit-banner__pdf-root {
+      flex-shrink: 0;
+      margin-top: auto;
+      padding-top: 8px;
     }
 
     .audit-banner__status-tags {
@@ -380,10 +390,6 @@
 
     .audit-banner__golive,
     .audit-banner__rag {
-      flex-shrink: 0;
-    }
-
-    .audit-banner__pdf-root {
       flex-shrink: 0;
     }
 
@@ -450,7 +456,7 @@
       }
 
       .audit-banner__aside {
-        align-items: flex-start;
+        align-items: flex-end;
         padding-top: 0;
         margin-right: 0;
       }
@@ -458,8 +464,9 @@
 
     .header {
       margin-bottom: 22px;
-      padding-left: 48px;
-      padding-right: 48px;
+      /* Align with banner + categories (card padding only; no extra inset). */
+      padding-left: 0;
+      padding-right: 0;
       text-align: left;
     }
 
