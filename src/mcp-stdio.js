@@ -8,22 +8,29 @@ import LockManager from './lock-manager.js';
 import CsvManager from './csv-manager.js';
 import LocalAuditTool from './local-audit-tool.js';
 import { validatePayload } from './validator.js';
+import { readFileSync } from 'fs';
 import { readFile, writeFile, copyFile, access, mkdir, readdir, unlink } from 'fs/promises';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import config from './config.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+const defaultAuditMetrics = JSON.parse(
+  readFileSync(resolve(__dirname, 'default-audit-metrics.json'), 'utf8')
+);
 const PRODUCT_AUDIT_DASHBOARD_URI = 'ui://ui-audit/audit-dashboard.html';
 const auditDashboardHtmlPath = resolve(__dirname, 'app-ui', 'audit-dashboard.html');
 const auditDashboardCssPath = resolve(__dirname, 'app-ui', 'audit-dashboard.css');
+const auditDashboardMetricsPath = resolve(__dirname, 'app-ui', 'audit-dashboard-metrics.js');
 const auditDashboardJsPath = resolve(__dirname, 'app-ui', 'audit-dashboard.js');
 const auditDashboardI18nPath = resolve(__dirname, 'app-ui', 'audit-dashboard-i18n.js');
 
 async function buildAuditDashboardContents(uri, variables) {
   let html = await readFile(auditDashboardHtmlPath, 'utf-8');
-  const [css, js, i18nJs] = await Promise.all([
+  const [css, metricsJs, js, i18nJs] = await Promise.all([
     readFile(auditDashboardCssPath, 'utf-8'),
+    readFile(auditDashboardMetricsPath, 'utf-8'),
     readFile(auditDashboardJsPath, 'utf-8'),
     readFile(auditDashboardI18nPath, 'utf-8'),
   ]);
@@ -34,6 +41,10 @@ async function buildAuditDashboardContents(uri, variables) {
   html = html.replace(
     /<script\s+src=["']audit-dashboard-i18n\.js["']\s*><\/script>/i,
     `<script>\n${i18nJs.trimEnd()}\n</script>`
+  );
+  html = html.replace(
+    /<script\s+src=["']audit-dashboard-metrics\.js["']\s*><\/script>/i,
+    `<script>\n${metricsJs.trimEnd()}\n</script>`
   );
   html = html.replace(
     /<script\s+src=["']audit-dashboard\.js["']\s+defer\s*><\/script>/i,
@@ -375,13 +386,41 @@ const auditDomainRowSchema = z.object({
   iconSvg: z.string().optional(),
 });
 
+const auditBannerInputSchema = z.object({
+  titlePrefix: z.string().optional().describe('Title prefix before the em dash (default: UI Audit).'),
+  repoUrl: z.string().optional().describe('Repository URL or clone string; monospace line under the title.'),
+  appUrl: z.string().optional().describe('Deployed app URL; rendered as a link.'),
+  commitId: z.string().optional().describe('Commit id or hash; shown shortened in the Commit · Generated line.'),
+  auditTimestamp: z.string().optional().describe('ISO or display timestamp after "Generated".'),
+  ragRating: z
+    .string()
+    .optional()
+    .describe('RAG pill: Red, Amber, or Green (case-insensitive).'),
+});
+
+const checklistSummaryMetricsInputSchema = z.object({
+  totalChecks: z.union([z.number(), z.string()]).optional(),
+  passed: z.union([z.number(), z.string()]).optional(),
+  failed: z.union([z.number(), z.string()]).optional(),
+  notApplicable: z.union([z.number(), z.string()]).optional(),
+  criticalFailed: z.union([z.number(), z.string()]).optional(),
+  highFailed: z.union([z.number(), z.string()]).optional(),
+  mediumFailed: z.union([z.number(), z.string()]).optional(),
+  mandatoryFailed: z.union([z.number(), z.string()]).optional(),
+});
+
+const passRatesInputSchema = z.object({
+  mandatoryPassRate: z.union([z.number(), z.string()]).optional(),
+  criticalPassRate: z.union([z.number(), z.string()]).optional(),
+});
+
 registerAppTool(
   server,
-  'show-product-audit-dashboard',
+  'show-audit-dashboard',
   {
-    title: 'Product audit dashboard',
+    title: 'Audit dashboard',
     description:
-      'Opens the Product Audit MCP App: project name on overview and drill-down, checklist summary line, aggregate compliance score, domain donut chart, and domain rows (UI Quality, Accessibility, Performance, Code Quality, UX Compliance, Security). Each row shows a score, passed/total checklist counts, and a progress bar. Rows drill down to metric tables. Pass optional projectName, domains[] with optional domainKey, passed, total, and metrics[]; overviewCenterPercent sets the default donut center before hover.',
+      'Opens the Audit MCP App: metadata header, RAG pill, Overall Compliance + donut from overallScores, and category cards from flat metrics keys (prefix = category). Default sample is src/default-audit-metrics.json when metrics is omitted. Override with metrics, optional domains[], locale, etc.',
     inputSchema: {
       projectName: z
         .string()
@@ -409,35 +448,52 @@ registerAppTool(
         .describe(
           'Audit domain rows: title, subtitle, score value; optional passed/total checklist counts (shown as passed/total with a bar); optional domainKey and metrics for drill-down.'
         ),
+      auditBanner: auditBannerInputSchema
+        .optional()
+        .describe('Banner meta: repoUrl, appUrl, commitId, auditTimestamp, ragRating, optional titlePrefix.'),
+      checklistSummaryMetrics: checklistSummaryMetricsInputSchema
+        .optional()
+        .describe('Counts for the Checklist summary insight card (total, passed, failed, N/A, severity/mandatory failed).'),
+      passRates: passRatesInputSchema
+        .optional()
+        .describe('Mandatory and critical pass rate percentages for the Pass rates card.'),
+      metrics: z
+        .record(z.string(), z.union([z.string(), z.number()]))
+        .optional()
+        .describe(
+          'Flat EDS-style keys merged into banner and insight cards when structured fields are omitted, e.g. metadata.*, overallStatus.*, summary.*, and overallScores.uiQualityScore (plus other overallScores.*) to populate domain rows when domains[] is omitted.'
+        ),
     },
     _meta: { ui: { resourceUri: PRODUCT_AUDIT_DASHBOARD_URI } },
   },
   async (args) => {
-    const defaults = {
-      projectName: 'Example Project Audit Report',
-      checklistSummaryLine: '1,240 Total Checklist',
-      totalComplianceValue: 81,
-    };
-    const defaultDomains = [
-      { title: 'UI Quality', subtitle: 'Visual design, consistency', value: '78', passed: 39, total: 50 },
-      { title: 'Accessibility', subtitle: 'WCAG, keyboard, assistive tech', value: '82', passed: 41, total: 50 },
-      { title: 'Performance', subtitle: 'Load, runtime, assets', value: '71', passed: 36, total: 50 },
-      { title: 'Code Quality', subtitle: 'Structure, linting, patterns', value: '88', passed: 44, total: 50 },
-      { title: 'UX Compliance', subtitle: 'Flows, heuristics, standards', value: '76', passed: 38, total: 50 },
-      { title: 'Security', subtitle: 'Headers, policies, data handling', value: '90', passed: 45, total: 50 },
-    ];
-    const domains = args?.domains?.length ? args.domains : defaultDomains;
-    const avgCenter = Math.round(
-      domains.reduce((s, c) => s + Number(c.value), 0) / domains.length
-    );
+    const fallbackProjectName = 'Example Project Audit Report';
+    const metrics =
+      args?.metrics !== undefined
+        ? Object.keys(args.metrics).length
+          ? args.metrics
+          : null
+        : defaultAuditMetrics;
+    const projectName =
+      args?.projectName ??
+      (metrics && metrics['metadata.projectName'] != null && String(metrics['metadata.projectName']).trim() !== ''
+        ? String(metrics['metadata.projectName']).trim()
+        : fallbackProjectName);
     const payload = {
-      projectName: args?.projectName ?? defaults.projectName,
-      checklistSummaryLine: args?.checklistSummaryLine ?? defaults.checklistSummaryLine,
-      totalComplianceValue: args?.totalComplianceValue ?? defaults.totalComplianceValue,
-      overviewCenterPercent:
-        args?.overviewCenterPercent ?? (Number.isFinite(avgCenter) ? avgCenter : 81),
-      domains,
+      projectName,
+      ...(args?.checklistSummaryLine != null && args.checklistSummaryLine !== ''
+        ? { checklistSummaryLine: args.checklistSummaryLine }
+        : {}),
+      ...(args?.totalComplianceValue !== undefined ? { totalComplianceValue: args.totalComplianceValue } : {}),
+      ...(args?.overviewCenterPercent !== undefined ? { overviewCenterPercent: args.overviewCenterPercent } : {}),
+      ...(args?.domains?.length ? { domains: args.domains } : {}),
+      ...(args?.auditBanner && Object.keys(args.auditBanner).length ? { auditBanner: args.auditBanner } : {}),
+      ...(args?.checklistSummaryMetrics && Object.keys(args.checklistSummaryMetrics).length
+        ? { checklistSummaryMetrics: args.checklistSummaryMetrics }
+        : {}),
+      ...(args?.passRates && Object.keys(args.passRates).length ? { passRates: args.passRates } : {}),
       ...(args?.locale != null && args.locale !== '' ? { locale: args.locale } : {}),
+      ...(metrics ? { metrics } : {}),
     };
     const dataJson = JSON.stringify(payload);
     const dataEnc = encodeURIComponent(dataJson);
@@ -450,7 +506,7 @@ registerAppTool(
       content: [
         {
           type: 'text',
-          text: `Product audit dashboard: ${payload.checklistSummaryLine}; aggregate compliance ${typeof payload.totalComplianceValue === 'number' ? payload.totalComplianceValue.toLocaleString('en-US') : payload.totalComplianceValue}; overview center ${payload.overviewCenterPercent}%. ${payload.domains.length} domain rows.`,
+          text: `Audit dashboard: ${payload.projectName}${payload.metrics?.['overallStatus.ragRating'] != null ? `; RAG ${payload.metrics['overallStatus.ragRating']}` : ''}${payload.metrics?.['summary.totalChecks'] != null ? `; ${payload.metrics['summary.totalChecks']} checks` : ''}. Open the MCP App resource for the full view.`,
         },
       ],
       structuredContent: {

@@ -36,8 +36,17 @@
     </button>
     <div class="dashboard-views">
     <div id="view-overview" class="view-pane">
+    <div class="audit-banner" id="audit-banner" aria-label="Audit context">
+      <div class="audit-banner__main">
+        <h1 class="audit-banner__title" id="dash-audit-title">UI Audit</h1>
+        <div class="audit-banner__meta" id="dash-audit-meta" hidden></div>
+      </div>
+      <div class="audit-banner__rag" id="dash-rag-wrap" hidden>
+        <span class="audit-rag" id="dash-rag-badge" role="status"></span>
+      </div>
+    </div>
+
     <header class="header">
-      <h1 class="project-heading" id="dash-project-name" data-i18n="defaults.projectReport">Example Project Audit Report</h1>
       <h2 class="section-heading" id="dash-section-title" data-i18n="defaults.sectionTitle">Overall Compliance</h2>
       <p class="subtitle" id="dash-checklist-summary" data-i18n="defaults.checklistSummary">1,240 Total Checklist</p>
     </header>
@@ -56,6 +65,13 @@
         </div>
       </div>
     </section>
+
+    <section
+      class="metric-categories"
+      id="metric-categories-root"
+      data-i18n-aria="metrics.categoriesAria"
+      aria-label="Metrics by category"
+    ></section>
 
     <div class="rows rows--interactive" id="dash-domains" role="list">
       <div class="row" data-key="ui-quality" data-passed="39" data-total="50" role="listitem" tabindex="0" aria-label="UI Quality, open details">
@@ -188,14 +204,14 @@
     </div>
 
     <div id="view-drilldown" class="view-pane is-hidden" aria-hidden="true">
-      <p class="project-heading drilldown-project-name" id="dash-drill-project-name" data-i18n="defaults.projectReport">Example Project Audit Report</p>
+      <p class="drilldown-project-name" id="dash-drill-project-name">UI Audit</p>
       <button type="button" class="back-nav" id="drill-back" data-i18n-aria="nav.backAria" aria-label="Back to overview">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
         <span data-i18n="nav.back">Back</span>
       </button>
       <h3 class="drilldown-title" id="drill-title"></h3>
       <div class="metrics-table-scroll">
-        <table class="metrics-table">
+        <table class="metrics-table" id="drill-metrics-table">
           <thead>
             <tr>
               <th scope="col" class="metrics-th metrics-th--metric" data-i18n="table.metric">Metric</th>
@@ -211,6 +227,7 @@
   </article>
 
   <script src="audit-dashboard-i18n.js"></script>
+  <script src="audit-dashboard-metrics.js"></script>
   <script src="audit-dashboard.js" defer></script>
 </body>
 </html>
