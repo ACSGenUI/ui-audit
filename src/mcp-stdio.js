@@ -59,6 +59,69 @@ async function buildAuditDashboardContents(uri, variables) {
   };
 }
 
+const DASHBOARD_FALLBACK_PROJECT = 'Example Project Audit Report';
+
+function projectNameFromMetrics(metrics, fallback = DASHBOARD_FALLBACK_PROJECT) {
+  if (!metrics || typeof metrics !== 'object') return fallback;
+  const name = metrics['metadata.projectName'];
+  if (name == null) return fallback;
+  const t = String(name).trim();
+  return t !== '' ? t : fallback;
+}
+
+/**
+ * @param {string | undefined} metricsJson - Optional JSON string: flat EDS-style metrics object, or a dashboard payload object that includes a `metrics` object.
+ * @returns {{ payload: object, usedDefaultMetrics: boolean, jsonInvalid: boolean }}
+ */
+function resolveDashboardPayloadFromMetricsJson(metricsJson) {
+  const defaultPayload = {
+    projectName: projectNameFromMetrics(defaultAuditMetrics),
+    metrics: defaultAuditMetrics,
+  };
+
+  if (metricsJson === undefined || metricsJson === null) {
+    return { payload: defaultPayload, usedDefaultMetrics: true, jsonInvalid: false };
+  }
+
+  const trimmed = String(metricsJson).trim();
+  if (trimmed === '') {
+    return { payload: defaultPayload, usedDefaultMetrics: true, jsonInvalid: false };
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return { payload: defaultPayload, usedDefaultMetrics: true, jsonInvalid: true };
+  }
+
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { payload: defaultPayload, usedDefaultMetrics: true, jsonInvalid: true };
+  }
+
+  if (parsed.metrics != null && typeof parsed.metrics === 'object' && !Array.isArray(parsed.metrics)) {
+    const metrics = parsed.metrics;
+    const projectName =
+      parsed.projectName != null && String(parsed.projectName).trim() !== ''
+        ? String(parsed.projectName).trim()
+        : projectNameFromMetrics(metrics);
+    return {
+      payload: { ...parsed, projectName, metrics },
+      usedDefaultMetrics: false,
+      jsonInvalid: false,
+    };
+  }
+
+  return {
+    payload: {
+      projectName: projectNameFromMetrics(parsed),
+      metrics: parsed,
+    },
+    usedDefaultMetrics: false,
+    jsonInvalid: false,
+  };
+}
+
 
 const lockManager = new LockManager();
 const csvManager = new CsvManager(lockManager);
@@ -104,7 +167,7 @@ registerAppResource(
   AUDIT_DASHBOARD_URI,
   {
     description:
-      'Interactive MCP App view for UI audit results: checklist summary, total compliance score, domain donut chart, and drill-down domain rows.',
+      'Interactive MCP App view for UI audit results. Without ?data=, the embedded app uses server default metrics (default-audit-metrics.json). Use the parameterized resource or display-audit-dashboard tool to pass URL-encoded JSON in the data query param (dashboard payload with at least metrics).',
   },
   async (uri) => buildAuditDashboardContents(uri, undefined)
 );
@@ -114,7 +177,7 @@ server.registerResource(
   new ResourceTemplate(`${AUDIT_DASHBOARD_URI}{?data}`, {}),
   {
     description:
-      'Same audit dashboard HTML with URL-encoded JSON in the data query param (tool-driven payload).',
+      'Audit dashboard HTML with optional URL-encoded JSON in the `data` query param (encodeURIComponent of JSON: flat metrics object or full payload with `metrics`). Omit data to load the same HTML as the base resource; the UI then uses built-in default metrics.',
     mimeType: RESOURCE_MIME_TYPE,
   },
   async (uri, variables) => buildAuditDashboardContents(uri, variables)
@@ -344,10 +407,7 @@ Count "No" rows matching the relevant Group + Sub-Group + checklist item keyword
 6. \`write-metrics\` with the full computed key-value object — writes all values to the metrics CSV at once.
 
 ### Step 5 — Show audit dashboard
-7. Immediately call **\`show-audit-dashboard\`** with:
-   - \`metrics\`: the **same** flat key-value object you passed to \`write-metrics\` (all EDS-style keys).
-   - \`projectName\`: from \`metadata.projectName\` in that object, or the user’s project name from Step 0.
-   - \`locale\`: only if the user requested a specific dashboard language.
+7. Immediately call **\`display-audit-dashboard\`** with \`metricsJson\` set to \`JSON.stringify(...)\` of the **same** flat key-value object you passed to \`write-metrics\` (all EDS-style keys). Omit \`metricsJson\` only if you intend the sample dashboard.
    This opens the Audit Dashboard MCP App (\`ui://ui-audit/audit-dashboard.html\`). Ensure the host **opens or focuses** \`_meta.ui.resourceUri\` from the tool response so the user sees the live dashboard.
 
 ### Step 6 — Cleanup
@@ -359,7 +419,7 @@ Count "No" rows matching the relevant Group + Sub-Group + checklist item keyword
 ## Rules
 - Use ONLY \`read-full-checklist\` to read audit data — do NOT call \`read-checklist-row\` one row at a time.
 - Leave a metric value as empty string ("") if it cannot be derived from the audit data — do NOT guess or fabricate values.
-- **Always** call \`show-audit-dashboard\` after a successful \`write-metrics\` (before \`cleanup-workspace\`) so the dashboard displays the metrics you just generated.
+- **Always** call \`display-audit-dashboard\` with \`metricsJson: JSON.stringify(metrics)\` after a successful \`write-metrics\` (before \`cleanup-workspace\`) so the dashboard displays the metrics you just generated.
 - Never stop mid-generation.`,
       },
     }],
@@ -370,7 +430,7 @@ server.registerPrompt(
   'show-audit-dashboard',
   {
     description:
-      'Open the Audit Dashboard MCP App (interactive UI). Invokes the show-audit-dashboard tool so the host can render ui://ui-audit/audit-dashboard.html.',
+      'Open the Audit Dashboard MCP App (interactive UI). Invokes the display-audit-dashboard tool so the host can render ui://ui-audit/audit-dashboard.html.',
   },
   () => ({
     messages: [
@@ -381,12 +441,11 @@ server.registerPrompt(
           text: `Open the **Audit Dashboard** in the MCP App UI.
 
 ## What to do
-1. Call the MCP tool **\`show-audit-dashboard\`** now.
-2. Use **no arguments** (or an empty object \`{}\`) to load the built-in sample metrics from the server defaults.
-3. If the user asked for a specific project or data, pass a matching payload:
-   - \`projectName\`, \`locale\`
-   - \`metrics\`: flat key-value object (EDS-style keys such as \`metadata.projectName\`, \`summary.*\`, \`overallScores.*\`, \`overallStatus.*\`)
-   - optional \`domains\`, \`auditBanner\`, \`checklistSummaryLine\`, \`totalComplianceValue\`, \`overviewCenterPercent\`, \`checklistSummaryMetrics\`, \`passRates\`
+1. Call the MCP tool **\`display-audit-dashboard\`** now.
+2. Omit \`metricsJson\` or pass \`""\` to load the built-in sample metrics from the server (\`default-audit-metrics.json\`).
+3. To show real audit data, pass a single argument \`metricsJson\`: a **JSON string** (use \`JSON.stringify\`) of either:
+   - the flat metrics object (EDS-style keys: \`metadata.projectName\`, \`summary.*\`, \`overallScores.*\`, \`overallStatus.*\`, etc.), or
+   - a full dashboard payload object that includes a \`metrics\` property (optional \`projectName\`, \`domains\`, \`locale\`, etc.).
 
 ## After the tool returns
 - The tool response includes MCP App metadata (\`_meta.ui.resourceUri\`) pointing at \`ui://ui-audit/audit-dashboard.html\` (with \`?data=...\` when the JSON is small enough).
@@ -453,9 +512,7 @@ Do NOT pause, ask questions, or wait for user input at any point after receiving
 6. \`write-metrics\` with the \`metrics\` object — writes all values to the Metrics CSV.
 
 ### Step 4 — Show audit dashboard
-7. Call \`show-audit-dashboard\` with:
-   - \`metrics\`: the same flat key-value object from \`compute-metrics\`
-   - \`projectName\`: from user answer
+7. Call \`display-audit-dashboard\` with \`metricsJson: JSON.stringify(metrics)\` where \`metrics\` is the flat key-value object from \`compute-metrics\`.
 
 ### Step 5 — Cleanup
 8. \`cleanup-workspace\` — removes any auto-generated JSON, MD, and Python files, keeping only CSVs.
@@ -476,157 +533,42 @@ Begin immediately.`,
 
 // ── Tools ──
 
-const drilldownMetricSchema = z.object({
-  metric: z.string().describe('Row label in the Metric column.'),
-  compliance: z.string().describe('Compliance status text, e.g. Yes, No, Partial.'),
-  score: z.union([z.number(), z.string()]).describe('Numeric score 0–100; color: red if under 40, amber 40–89, green 90+.'),
-});
-
-const auditDomainRowSchema = z.object({
-  title: z.string(),
-  subtitle: z.string().optional(),
-  value: z.union([z.string(), z.number()]),
-  passed: z
-    .union([z.number(), z.string()])
-    .optional()
-    .describe('Passed checklist count for this domain (pair with total); shown as passed/total with a progress bar.'),
-  total: z
-    .union([z.number(), z.string()])
-    .optional()
-    .describe('Total checklist items for this domain; progress bar uses passed/total. If omitted with passed, defaults are derived from the score value.'),
-  domainKey: z
-    .string()
-    .optional()
-    .describe('Stable id for drill-down metrics (slug, e.g. ui-quality). Defaults from title if omitted.'),
-  metrics: z
-    .array(drilldownMetricSchema)
-    .optional()
-    .describe('Optional metric rows for the domain drill-down table (Metric, Compliance, Score).'),
-  iconBg: z.string().optional(),
-  iconSvg: z.string().optional(),
-});
-
-const auditBannerInputSchema = z.object({
-  titlePrefix: z.string().optional().describe('Title prefix before the em dash (default: UI Audit).'),
-  repoUrl: z.string().optional().describe('Repository URL or clone string; monospace line under the title.'),
-  appUrl: z.string().optional().describe('Deployed app URL; rendered as a link.'),
-  commitId: z.string().optional().describe('Commit id or hash; shown shortened in the Commit · Generated line.'),
-  auditTimestamp: z.string().optional().describe('ISO or display timestamp after "Generated".'),
-  ragRating: z
-    .string()
-    .optional()
-    .describe('RAG pill: Red, Amber, or Green (case-insensitive).'),
-});
-
-const checklistSummaryMetricsInputSchema = z.object({
-  totalChecks: z.union([z.number(), z.string()]).optional(),
-  passed: z.union([z.number(), z.string()]).optional(),
-  failed: z.union([z.number(), z.string()]).optional(),
-  notApplicable: z.union([z.number(), z.string()]).optional(),
-  criticalFailed: z.union([z.number(), z.string()]).optional(),
-  highFailed: z.union([z.number(), z.string()]).optional(),
-  mediumFailed: z.union([z.number(), z.string()]).optional(),
-  mandatoryFailed: z.union([z.number(), z.string()]).optional(),
-});
-
-const passRatesInputSchema = z.object({
-  mandatoryPassRate: z.union([z.number(), z.string()]).optional(),
-  criticalPassRate: z.union([z.number(), z.string()]).optional(),
-});
-
 registerAppTool(
   server,
   'display-audit-dashboard',
   {
     title: 'Audit dashboard',
     description:
-      'Opens the Audit MCP App: metadata header, RAG pill, Overall Compliance + donut from scores.* / overallScores, summary mini-donuts (browser / code / manual audit), and category cards from flat metrics keys (prefix = category). Default sample is src/default-audit-metrics.json when metrics is omitted. Override with metrics, optional domains[], locale, etc.',
+      'Opens the Audit MCP App (ui://…/audit-dashboard.html). Optional argument: metricsJson — a JSON string of flat EDS-style metric key-values (same shape as write-metrics / compute-metrics output), or a full dashboard payload object that includes a `metrics` object. Omit or pass empty string to use the server default metrics (default-audit-metrics.json). Invalid JSON falls back to those defaults.',
     inputSchema: {
-      projectName: z
+      metricsJson: z
         .string()
-        .optional()
-        .describe('Project name shown at the top of the overview and drill-down views.'),
-      checklistSummaryLine: z
-        .string()
-        .optional()
-        .describe('Line under the section title, e.g. number of checklist items audited.'),
-      totalComplianceValue: z
-        .union([z.number(), z.string()])
-        .optional()
-        .describe('Aggregate compliance figure shown beside the label (default: 81).'),
-      overviewCenterPercent: z
-        .number()
-        .optional()
-        .describe('Default donut center percentage before segment hover (default: average of domain scores).'),
-      locale: z
-        .string()
-        .optional()
-        .describe('Dashboard UI language (e.g. "en", "es"). Labels and default drill-down copy follow this locale.'),
-      domains: z
-        .array(auditDomainRowSchema)
         .optional()
         .describe(
-          'Audit domain rows: title, subtitle, score value; optional passed/total checklist counts (shown as passed/total with a bar); optional domainKey and metrics for drill-down.'
-        ),
-      auditBanner: auditBannerInputSchema
-        .optional()
-        .describe('Banner meta: repoUrl, appUrl, commitId, auditTimestamp, ragRating, optional titlePrefix.'),
-      checklistSummaryMetrics: checklistSummaryMetricsInputSchema
-        .optional()
-        .describe('Counts for the Checklist summary insight card (total, passed, failed, N/A, severity/mandatory failed).'),
-      passRates: passRatesInputSchema
-        .optional()
-        .describe('Mandatory and critical pass rate percentages for the Pass rates card.'),
-      metrics: z
-        .record(z.string(), z.union([z.string(), z.number()]))
-        .optional()
-        .describe(
-          'Flat EDS-style keys merged into banner and insight cards when structured fields are omitted, e.g. metadata.*, overallStatus.*, summary.*, and overallScores.uiQualityScore (plus other overallScores.*) to populate domain rows when domains[] is omitted.'
+          'Optional JSON string: either (1) flat metrics object with keys like metadata.projectName, summary.*, overallScores.*, or (2) a dashboard payload including a `metrics` object (and optional projectName, domains, locale, etc.). Omit or "" for built-in sample metrics. Malformed JSON uses defaults.'
         ),
     },
     _meta: { ui: { resourceUri: AUDIT_DASHBOARD_URI } },
   },
   async (args) => {
-    const fallbackProjectName = 'Example Project Audit Report';
-    const metrics =
-      args?.metrics !== undefined
-        ? Object.keys(args.metrics).length
-          ? args.metrics
-          : null
-        : defaultAuditMetrics;
-    const projectName =
-      args?.projectName ??
-      (metrics && metrics['metadata.projectName'] != null && String(metrics['metadata.projectName']).trim() !== ''
-        ? String(metrics['metadata.projectName']).trim()
-        : fallbackProjectName);
-    const payload = {
-      projectName,
-      ...(args?.checklistSummaryLine != null && args.checklistSummaryLine !== ''
-        ? { checklistSummaryLine: args.checklistSummaryLine }
-        : {}),
-      ...(args?.totalComplianceValue !== undefined ? { totalComplianceValue: args.totalComplianceValue } : {}),
-      ...(args?.overviewCenterPercent !== undefined ? { overviewCenterPercent: args.overviewCenterPercent } : {}),
-      ...(args?.domains?.length ? { domains: args.domains } : {}),
-      ...(args?.auditBanner && Object.keys(args.auditBanner).length ? { auditBanner: args.auditBanner } : {}),
-      ...(args?.checklistSummaryMetrics && Object.keys(args.checklistSummaryMetrics).length
-        ? { checklistSummaryMetrics: args.checklistSummaryMetrics }
-        : {}),
-      ...(args?.passRates && Object.keys(args.passRates).length ? { passRates: args.passRates } : {}),
-      ...(args?.locale != null && args.locale !== '' ? { locale: args.locale } : {}),
-      ...(metrics ? { metrics } : {}),
-    };
+    const { payload, usedDefaultMetrics, jsonInvalid } = resolveDashboardPayloadFromMetricsJson(args?.metricsJson);
     const dataJson = JSON.stringify(payload);
     const dataEnc = encodeURIComponent(dataJson);
     const resourceWithData =
-      dataJson.length < 6000
-        ? `${AUDIT_DASHBOARD_URI}?data=${dataEnc}`
-        : AUDIT_DASHBOARD_URI;
+      dataJson.length < 6000 ? `${AUDIT_DASHBOARD_URI}?data=${dataEnc}` : AUDIT_DASHBOARD_URI;
+
+    const hint =
+      jsonInvalid
+        ? ' Invalid metricsJson — using default-audit-metrics.json.'
+        : usedDefaultMetrics
+          ? ' Using default sample metrics.'
+          : '';
 
     return {
       content: [
         {
           type: 'text',
-          text: `Audit dashboard: ${payload.projectName}${payload.metrics?.['overallStatus.ragRating'] != null ? `; RAG ${payload.metrics['overallStatus.ragRating']}` : ''}${payload.metrics?.['summary.totalChecks'] != null ? `; ${payload.metrics['summary.totalChecks']} checks` : ''}. Open the MCP App resource for the full view.`,
+          text: `Audit dashboard: ${payload.projectName}${payload.metrics?.['overallStatus.ragRating'] != null ? `; RAG ${payload.metrics['overallStatus.ragRating']}` : ''}${payload.metrics?.['summary.totalChecks'] != null ? `; ${payload.metrics['summary.totalChecks']} checks` : ''}. Open the MCP App resource for the full view.${hint}`,
         },
       ],
       structuredContent: {
@@ -831,7 +773,7 @@ server.registerTool(
   'compute-metrics',
   {
     description:
-      'Read all completed audit checklists (code-audit, browser-audit, manual-audit) and compute every metric value deterministically. Returns the full flat key-value object ready to pass to write-metrics and show-audit-dashboard. Missing audit files are skipped gracefully.',
+      'Read all completed audit checklists (code-audit, browser-audit, manual-audit) and compute every metric value deterministically. Returns the full flat key-value object ready to pass to write-metrics and display-audit-dashboard (as metricsJson: JSON.stringify(metrics)). Missing audit files are skipped gracefully.',
     inputSchema: {
       projectName: z.string().optional().describe('Project name for metadata.'),
       appUrl: z.string().optional().describe('App URL audited in browser audit.'),

@@ -1254,6 +1254,25 @@ export const THEME_STORAGE_KEY = "ui-audit-theme";
     } catch (hostThemeDonutError) { /* ignore */ }
   };
 
+  /** MCP App: host sends tool args via ontoolinput; apply same payload shape as ?data= / injected script. */
+  globalThis.__AUDIT_APPLY_DASHBOARD_PAYLOAD__ = function (payload) {
+    if (payload != null && typeof payload === "object") {
+      globalThis.__UI_AUDIT_DASHBOARD__ = payload;
+    } else {
+      try {
+        delete globalThis.__UI_AUDIT_DASHBOARD__;
+      } catch (clearPayloadError) {
+        globalThis.__UI_AUDIT_DASHBOARD__ = undefined;
+      }
+    }
+    applyPayload(getEffectivePayload());
+    reinitDonutFromPayload();
+    updateThemeToggleUI();
+    try {
+      runOverviewRowBarAnimations(document.getElementById("dash-domains"));
+    } catch (rowAnimError) { /* ignore */ }
+  };
+
   try {
     var payload = getEffectivePayload();
     applyPayload(payload);
