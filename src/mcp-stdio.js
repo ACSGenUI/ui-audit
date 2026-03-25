@@ -385,13 +385,15 @@ Wait for their response.
 ## What to do
 
 ### Step 1 — Load metrics
-- If the user provided a path, read that CSV file using \`read-full-checklist\` or by reading the file directly. Parse the CSV (columns: \`key\`, \`value\`) into a flat key-value object.
-- If the user left it empty, read the default metrics file from the \`.ui-audit/\` workspace directory (\`Metrics.csv\`). Parse the same way.
+- If the user provided a path, read that CSV file and pass its contents to \`csv-to-flat-json\` with \`csvText\`.
+- If the user left it empty, call \`csv-to-flat-json\` with \`fileName: "Metrics.csv"\` — this reads from the \`.ui-audit/\` workspace directory and returns a flat key-value JSON object.
 - If the file is not found or empty, fall back to calling \`show-audit-dashboard\` with no arguments to load built-in sample metrics.
 
 ### Step 2 — Open dashboard
-1. Call the MCP tool **\`show-audit-dashboard\`** with:
-   - \`metrics\`: the flat key-value object parsed from the CSV
+1. Extract the \`json\` field from the \`csv-to-flat-json\` response.
+2. **CRITICAL: Pass the \`json\` object AS-IS to \`show-audit-dashboard\`. Do NOT rename keys, restructure, nest, filter, convert types, or modify the object in any way. The dashboard relies on the exact flat key-value structure. Any modification will break the dashboard.**
+3. Call the MCP tool **\`show-audit-dashboard\`** with:
+   - \`metrics\`: the \`json\` object exactly as returned by \`csv-to-flat-json\` (pass-through, no changes)
    - \`projectName\`: from \`metadata.projectName\` in the metrics object (if present)
    - optional \`locale\`, \`domains\`, \`auditBanner\`, \`checklistSummaryLine\`, \`totalComplianceValue\`, \`overviewCenterPercent\`, \`checklistSummaryMetrics\`, \`passRates\`
 
@@ -961,6 +963,40 @@ server.registerTool(
   async ({ command, cwd, timeoutMs }) => {
     const result = await localAuditTool.execute({ command, cwd, timeoutMs });
     return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+  }
+);
+
+server.registerTool(
+  'csv-to-flat-json',
+  {
+    description: 'Convert a two-column CSV (key,value) into a flat JSON object. Accepts either a file path to a CSV in the audit workspace or raw CSV text.',
+    inputSchema: {
+      csvText: z.string().optional().describe('Raw CSV text with "key" and "value" columns. Provide this OR fileName, not both.'),
+      fileName: z.string().optional().describe('Name of a CSV file inside the audit workspace (.ui-audit/) to read. Provide this OR csvText, not both.'),
+    },
+  },
+  async ({ csvText, fileName }) => {
+    if (!csvText && !fileName) {
+      return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'Provide either csvText or fileName.' }) }] };
+    }
+    let raw;
+    if (fileName) {
+      const filePath = resolve(config.workspaceDir, fileName);
+      raw = await readFile(filePath, 'utf-8');
+    } else {
+      raw = csvText;
+    }
+    const { parse: csvParse } = await import('csv-parse/sync');
+    const records = csvParse(raw, { columns: true, skip_empty_lines: true, trim: true });
+    const result = {};
+    for (const row of records) {
+      const key = row.key ?? row.Key;
+      const value = row.value ?? row.Value;
+      if (key != null) {
+        result[key] = value ?? '';
+      }
+    }
+    return { content: [{ type: 'text', text: JSON.stringify({ ok: true, json: result }) }] };
   }
 );
 
