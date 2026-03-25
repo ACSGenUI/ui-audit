@@ -828,6 +828,18 @@ function computeGranularMetrics(codeRows, browserRows, manualRows) {
  * @returns {Record<string, string>} Flat key-value object matching Metrics.csv keys
  */
 export function computeAllMetrics(codeRows, browserRows, manualRows, metadata = {}) {
+  // Strip BOM (\uFEFF) from column keys — CSVs from Excel/Sheets often have this
+  const stripBom = (rows) => rows.map((row) => {
+    const clean = {};
+    for (const [k, v] of Object.entries(row)) {
+      clean[k.replace(/^\uFEFF/, '')] = v;
+    }
+    return clean;
+  });
+  codeRows = stripBom(codeRows);
+  browserRows = stripBom(browserRows);
+  manualRows = stripBom(manualRows);
+
   const m = {};
 
   // Metadata
