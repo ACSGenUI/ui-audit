@@ -1,0 +1,301 @@
+/* Issues / data table — horizontal dividers only, no vertical rules. Uses host --text / --text-muted / --border-table. */
+.pc-issues-table-wrap {
+  width: 100%;
+  margin-top: 4px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pc-issues-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: inherit;
+  table-layout: auto;
+}
+
+.pc-issues-table thead th {
+  text-align: left;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text, #1e293b);
+  padding: 14px 16px 12px 0;
+  border-bottom: 1px solid var(--border-table, #e2e8f0);
+  vertical-align: bottom;
+}
+
+.pc-issues-table thead th:first-child {
+  padding-left: 0;
+}
+
+.pc-issues-table tbody td {
+  text-align: left;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--text-muted, #64748b);
+  padding: 18px 16px 18px 0;
+  border-bottom: 1px solid var(--border-table, #e2e8f0);
+  vertical-align: top;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.pc-issues-table tbody td:first-child {
+  padding-left: 0;
+}
+
+.pc-issues-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.pc-issues-table:not(.pc-issues-table--components):not(.pc-issues-table--top-issues) th:nth-child(2),
+.pc-issues-table:not(.pc-issues-table--components):not(.pc-issues-table--top-issues) td:nth-child(2) {
+  min-width: min(280px, 40vw);
+}
+
+.pc-issues-table--top-issues th:nth-child(2),
+.pc-issues-table--top-issues td:nth-child(2) {
+  min-width: min(280px, 40vw);
+}
+
+.metric-category-card--issues .pc-issues-table-wrap {
+  pointer-events: none;
+}
+
+/* Component category table — composite first column, metric + health cells */
+.pc-issues-table--components thead th {
+  color: var(--text-muted, #64748b);
+  font-weight: 600;
+}
+
+.pc-issues-table--components tbody td {
+  vertical-align: middle;
+  color: var(--text, #1e293b);
+}
+
+.pc-issues-component-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 2.5rem;
+}
+
+.pc-issues-component-icon {
+  flex-shrink: 0;
+  color: var(--text-muted, #64748b);
+  line-height: 0;
+}
+
+.pc-issues-component-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pc-issues-component-title {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--text, #0f172a);
+  line-height: 1.35;
+}
+
+.pc-issues-component-path {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-muted, #64748b);
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.pc-issues-metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pc-issues-metric--empty {
+  color: var(--text-muted, #64748b);
+}
+
+.pc-issues-metric-value {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text, #0f172a);
+}
+
+.pc-issues-health {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.pc-issues-health-track {
+  flex: 1;
+  max-width: 120px;
+  height: 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--border-table, #e2e8f0) 70%, transparent);
+  overflow: hidden;
+}
+
+.pc-issues-health-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.35s ease;
+}
+
+.pc-issues-health--good .pc-issues-health-fill {
+  background: #2563eb;
+}
+
+.pc-issues-health--warn .pc-issues-health-fill {
+  background: #ca8a04;
+}
+
+.pc-issues-health--low .pc-issues-health-fill {
+  background: #dc2626;
+}
+
+.pc-issues-health-score {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  min-width: 1.5rem;
+  text-align: right;
+}
+
+.pc-issues-health--good .pc-issues-health-score {
+  color: #2563eb;
+}
+
+.pc-issues-health--warn .pc-issues-health-score {
+  color: #ca8a04;
+}
+
+.pc-issues-health--low .pc-issues-health-score {
+  color: #dc2626;
+}
+
+.pc-issues-health--empty {
+  color: var(--text-muted, #64748b);
+}
+
+/* Top issues table — severity pills, ID, description stack, location, category */
+.pc-issues-table--top-issues thead th {
+  color: var(--text-muted, #64748b);
+  font-weight: 600;
+}
+
+.pc-issues-table--top-issues tbody td {
+  vertical-align: top;
+  color: var(--text, #1e293b);
+}
+
+.pc-issues-severity {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 8px 2px 6px;
+  border-radius: 999px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  line-height: 1.15;
+}
+
+.pc-issues-severity__glyph {
+  display: flex;
+  flex-shrink: 0;
+  line-height: 0;
+}
+
+.pc-issues-severity__text {
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.pc-issues-severity--critical {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.pc-issues-severity--high {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.pc-issues-severity--medium {
+  background: #fefce8;
+  color: #a16207;
+}
+
+.pc-issues-severity--low {
+  background: #f0fdf4;
+  color: #15803d;
+}
+
+.pc-issues-severity--unknown {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.pc-issues-desc-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 48rem;
+}
+
+.pc-issues-desc-main {
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--text, #1e293b);
+  line-height: 1.45;
+}
+
+.pc-issues-desc-sub {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-muted, #64748b);
+  line-height: 1.35;
+}
+
+.pc-issues-location-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pc-issues-location-path {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--text, #0f172a);
+  word-break: break-word;
+}
+
+.pc-issues-location-linehint {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-muted, #64748b);
+}
+
+.pc-issues-category-pill {
+  display: inline-block;
+  max-width: 100%;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.625rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--text, #334155);
+  background: #f1f5f9;
+  border: 1px solid color-mix(in srgb, var(--border-table, #e2e8f0) 90%, transparent);
+  white-space: nowrap;
+}

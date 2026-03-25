@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title data-i18n="page.title">Product Audit — Example Project Report</title>
+  <script>
+    (function () {
+      var k = "ui-audit-theme";
+      var v = localStorage.getItem(k);
+      if (v === "light" || v === "dark") document.documentElement.setAttribute("data-theme", v);
+    })();
+  </script>
+  <link rel="stylesheet" href="../progen-craft/design-system/progen-craft-design-system.css" />
+  <link rel="stylesheet" href="audit-dashboard.css" />
+</head>
+<body>
+  <article
+    class="card"
+    id="dashboard"
+    data-html2pdf-src="../progen-craft/design-system/utils/html2pdf.bundle.min.js"
+  >
+    <button
+      type="button"
+      class="theme-toggle"
+      id="theme-toggle"
+      data-i18n-title="theme.toggleTitle"
+      title="Switch theme. Alt+click: use system setting"
+    >
+      <span class="theme-toggle__icon theme-toggle__icon--moon" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </svg>
+      </span>
+      <span class="theme-toggle__icon theme-toggle__icon--sun" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+        </svg>
+      </span>
+    </button>
+
+    <div class="dashboard-views">
+      <div id="view-overview" class="view-pane">
+        <div class="audit-banner" id="audit-banner" aria-label="Audit context">
+          <div class="audit-banner__main">
+            <h1 class="audit-banner__title" id="dash-audit-title">UI Audit</h1>
+            <div class="audit-banner__meta" id="dash-audit-meta" hidden></div>
+          </div>
+          <div class="audit-banner__aside">
+            <div class="audit-banner__status-tags">
+              <div class="audit-banner__golive" id="dash-golive-wrap" hidden>
+                <span class="audit-rag" id="dash-golive-badge" role="status"></span>
+              </div>
+              <div class="audit-banner__rag" id="dash-rag-wrap" hidden>
+                <span class="audit-rag" id="dash-rag-badge" role="status"></span>
+              </div>
+            </div>
+            <div id="dash-pdf-download-root" class="audit-banner__pdf-root"></div>
+          </div>
+        </div>
+
+        <header class="header">
+          <h2 class="section-heading" id="dash-section-title" data-i18n="defaults.sectionTitle">Overall Compliance</h2>
+          <p class="subtitle" id="dash-checklist-summary" data-i18n="defaults.checklistSummary">1,240 Total Checklist</p>
+        </header>
+
+        <section class="summary">
+          <div class="summary-left">
+            <div class="big" id="dash-total-compliance">81</div>
+            <div class="label" data-i18n="defaults.totalComplianceLabel">Total compliance</div>
+          </div>
+          <div class="donut-wrap" role="img" data-i18n-aria="donut.ariaLabel" aria-label="Compliance breakdown by domain">
+            <svg class="donut-svg" id="donut-svg" viewBox="0 0 100 100" aria-hidden="true"></svg>
+            <div class="donut-tooltip" id="donut-tooltip" role="tooltip"></div>
+            <div class="donut-center">
+              <span class="pct" id="dash-overview-pct">81%</span>
+              <span class="center-label" id="dash-center-label" data-i18n="donut.overall">Overall</span>
+            </div>
+          </div>
+        </section>
+
+        <section
+          class="metric-categories"
+          id="metric-categories-root"
+          data-i18n-aria="metrics.categoriesAria"
+          aria-label="Metrics by category"
+        ></section>
+
+        <!-- Legacy domain drill rows: populated from payload.domains when flat metrics are absent; hidden when using JSON metrics. -->
+        <div class="rows rows--interactive" id="dash-domains" role="list" hidden></div>
+      </div>
+
+      <div id="view-drilldown" class="view-pane is-hidden" aria-hidden="true">
+        <p class="drilldown-project-name" id="dash-drill-project-name">UI Audit</p>
+        <button type="button" class="back-nav" id="drill-back" data-i18n-aria="nav.backAria" aria-label="Back to overview">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
+          <span data-i18n="nav.back">Back</span>
+        </button>
+        <h3 class="drilldown-title" id="drill-title"></h3>
+        <div class="metrics-table-scroll">
+          <table class="metrics-table" id="drill-metrics-table">
+            <thead>
+              <tr>
+                <th scope="col" class="metrics-th metrics-th--metric" data-i18n="table.metric">Metric</th>
+                <th scope="col" class="metrics-th metrics-th--compliance" data-i18n="table.compliance">Compliance</th>
+                <th scope="col" class="metrics-th metrics-th--score" data-i18n="table.score">Score</th>
+              </tr>
+            </thead>
+            <tbody id="drill-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <p class="dashboard-ai-note" data-i18n="footer.aiDisclaimer" role="note">
+      NOTE: This is an AI-driven experience, and while we strive for accuracy, AI may sometimes generate
+      unexpected or imperfect responses.
+    </p>
+  </article>
+
+  <script type="module" src="audit-dashboard-entry.js"></script>
+</body>
+</html>

@@ -1,28 +1,22 @@
 import { resolve } from 'path';
 
-// Workspace resolution priority:
-// 1. CLI argument (node mcp-stdio.js /path/to/workspace)
-// 2. MCP_WORKSPACE environment variable
-// 3. process.cwd() — set by Cursor via the "cwd" field in mcp.json
-const workspaceArg = process.argv[2];
-const workspaceDir = resolve(
-  workspaceArg || process.env.MCP_WORKSPACE || process.cwd()
-);
+// All audit output goes into .ui-audit/ inside the current working directory
+// (the project the user has open when they run the audit).
+const projectDir = process.cwd();
 
 const config = {
-  port: parseInt(process.env.MCP_PORT || '3100', 10),
-  bearerToken: process.env.MCP_BEARER_TOKEN || 'dev-token',
-  workspaceDir,
-  artifactsDir: resolve(process.env.MCP_ARTIFACTS || resolve(import.meta.dirname, '../artifacts')),
+  workspaceDir: resolve(projectDir, '.ui-audit'),
+  templatesDir: resolve(process.env.MCP_TEMPLATES || resolve(import.meta.dirname, '../templates')),
   lockTimeoutMs: parseInt(process.env.MCP_LOCK_TIMEOUT_MS || String(10 * 60 * 1000), 10),
-  maxConcurrencyPerClient: parseInt(process.env.MCP_MAX_CONCURRENCY || '1', 10),
-  dryRun: process.env.MCP_DRY_RUN === 'true',
   maxCommentLength: 2000,
   templates: {
-    checklist: 'EDS_Audit_Checklist.csv',
-    metrics: 'metrics.csv',
+    'code-audit': 'Code_Audit_Checklist.csv',
+    'browser-audit': 'Browser_Audit_Checklist.csv',
+    'manual-audit': 'Manual_Checklist.csv',
+    'metrics': 'Metrics.csv',
   },
-  allowedWriteColumns: ['Implemented? (Yes / No / NA)', 'Comments', 'Evidence'],
+  allowedWriteColumns: ['Implemented? (Yes / No)', 'Comments', 'Evidence'],
+  metricsValueColumn: 'value',
 };
 
 export default config;
