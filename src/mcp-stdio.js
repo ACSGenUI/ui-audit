@@ -231,7 +231,6 @@ The audit is only complete when \`get-checklist-status\` returns \`pending: 0\` 
 );
 
 server.registerPrompt(
-<<<<<<< HEAD
   'start-metrics-generation-v1',
   {
     description: '[Legacy] Generate a Metrics report from Code Audit and Browser Audit results only. Use start-metrics-generation for the full three-audit report.',
@@ -368,8 +367,6 @@ Count "No" rows matching the relevant Group + Sub-Group + checklist item keyword
 );
 
 server.registerPrompt(
-=======
->>>>>>> main
   'show-audit-dashboard',
   {
     description:
