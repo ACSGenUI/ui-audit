@@ -13,6 +13,7 @@ import { readFile, writeFile, copyFile, access, mkdir, readdir, unlink } from 'f
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import config from './config.js';
+import { computeAllMetrics } from './metrics-engine.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -230,6 +231,7 @@ The audit is only complete when \`get-checklist-status\` returns \`pending: 0\` 
 );
 
 server.registerPrompt(
+<<<<<<< HEAD
   'start-metrics-generation-v1',
   {
     description: '[Legacy] Generate a Metrics report from Code Audit and Browser Audit results only. Use start-metrics-generation for the full three-audit report.',
@@ -366,6 +368,8 @@ Count "No" rows matching the relevant Group + Sub-Group + checklist item keyword
 );
 
 server.registerPrompt(
+=======
+>>>>>>> main
   'show-audit-dashboard',
   {
     description:
@@ -392,7 +396,7 @@ server.registerPrompt(
 - Ensure the host **opens or focuses** that MCP App / UI resource so the user sees the dashboard.
 - Summarize in one short line what is shown (project name, RAG if present, checklist totals if present).
 
-Do not ask follow-up questions unless the user’s request was ambiguous about which metrics to show.`,
+Do not ask follow-up questions unless the user's request was ambiguous about which metrics to show.`,
         },
       },
     ],
@@ -416,6 +420,9 @@ server.registerPrompt(
 > 1. Project name:
 > 2. App URL (the URL audited in the Browser Audit, or leave blank):
 > 3. Auditor name (or leave blank):
+> 4. Path to filled Code Audit CSV (or leave blank to auto-detect from .ui-audit/):
+> 5. Path to filled Browser Audit CSV (or leave blank to auto-detect from .ui-audit/):
+> 6. Path to filled Manual Checklist CSV (or leave blank to auto-detect from .ui-audit/):
 
 Wait for their response. Then proceed with the full workflow below without any further pauses or questions.
 
@@ -430,390 +437,28 @@ Do NOT pause, ask questions, or wait for user input at any point after receiving
 ### Step 1 — Prepare workspace and auto-derive metadata
 1. \`set-audit-workspace\` with \`templateName: "metrics"\` — creates \`.ui-audit/\` and copies the metrics template.
 2. \`download-template\` with \`templateName: "metrics"\` — seeds a fresh metrics file.
-3. Auto-derive remaining metadata using \`run-local-audit\`:
-   - \`metadata.repoUrl\` → run \`git remote get-url origin\`; use stdout. If unavailable, use "".
-   - \`metadata.auditDate\` → current ISO 8601 date string.
-   - \`metadata.auditVersion\` → hardcoded: "2.0.0".
-   - \`metadata.projectName\`, \`metadata.appUrl\`, \`metadata.auditorName\` → from user answers.
+3. Auto-derive repoUrl using \`run-local-audit\`:
+   - run \`git remote get-url origin\`; use stdout. If unavailable, use "".
 
-### Step 2 — Load all three audit sources
-4. \`read-full-checklist\` with \`templateName: "code-audit"\` — load all Code Audit rows.
-5. \`read-full-checklist\` with \`templateName: "browser-audit"\` — load all Browser Audit rows.
-6. \`read-full-checklist\` with \`templateName: "manual-audit"\` — load all Manual Checklist rows.
+### Step 2 — Compute all metrics (server-side)
+4. Call \`compute-metrics\` with:
+   - \`projectName\`: from user answer
+   - \`appUrl\`: from user answer (or "")
+   - \`repoUrl\`: from the git command above (or "")
+   - \`auditorName\`: from user answer (or "")
+   - \`codeAuditPath\`: from user answer (omit if blank — tool auto-detects from .ui-audit/)
+   - \`browserAuditPath\`: from user answer (omit if blank — tool auto-detects from .ui-audit/)
+   - \`manualAuditPath\`: from user answer (omit if blank — tool auto-detects from .ui-audit/)
+   This tool reads all three checklists (code-audit, browser-audit, manual-audit) automatically, computes every metric (summaries, domain scores, weighted overall score, granular per-item values, risk index, RAG status, top issues, components requiring attention), and returns the full flat key-value object. When explicit paths are provided, those files are used directly; otherwise, the tool looks in .ui-audit/ then falls back to the templates directory. Missing audit files are skipped gracefully.
 
-If any checklist file is not found, continue with the available sources and leave the corresponding metric keys as "".
+### Step 3 — Write metrics
+5. Extract the \`metrics\` object from the \`compute-metrics\` response.
+6. \`write-metrics\` with the \`metrics\` object — writes all values to the Metrics CSV.
 
-### Step 3 — Compute metrics
-
-#### Summary counts
-- \`summary.codeAudit.total / passed / failed / notApplicable\` — Code Audit rows only. passed = "Yes" rows, failed = "No" rows, notApplicable = empty \`Implemented?\` rows.
-- \`summary.browserAudit.total / passed / failed / notApplicable\` — Browser Audit rows only.
-- \`summary.manualAudit.total / passed / failed / notApplicable\` — Manual Checklist rows only. Count "Yes" as passed, "No" as failed, empty as notApplicable.
-- \`summary.overall.total / passed / failed / notApplicable\` — all three combined.
-- \`summary.overall.mandatoryFailed\` = "No" rows across all audits where \`Mandatory\` = "Yes".
-- \`summary.overall.criticalFailed\` = "No" rows where \`Importance\` = "Critical".
-- \`summary.overall.highFailed\` = "No" rows where \`Importance\` = "High".
-- \`summary.overall.mediumFailed\` = "No" rows where \`Importance\` = "Medium".
-
-#### Domain scores (0–100)
-Score = (passed rows in domain / total answered rows in domain) × 100, rounded to 1 decimal. Omit rows with empty \`Implemented?\`.
-
-**Domain scores** — one score per category, combining rows from all applicable audits:
-- \`scores.discovery\` → Manual Checklist Phase = "Discovery"
-- \`scores.contentQuality\` → Manual Checklist Phase = "Content Quality"
-- \`scores.internationalization\` → Manual Checklist Phase = "Internationalization"
-- \`scores.design\` → Manual Checklist Phase = "Design"
-- \`scores.userExperience\` → Manual Checklist Phase = "User Experience"
-- \`scores.visualDesign\` → Manual Checklist Phase = "Visual Design"
-- \`scores.setup\` → Manual Checklist Phase = "Setup"
-- \`scores.development\` → Code Audit groups: HTML Semantics & Structure, HTML Forms & Inputs, HTML Media & Data, HTML Metadata & Validation, CSS Architecture & Tokens, Layout & Responsiveness, Performance & Misc - CSS, JavaScript Architecture & Loading, JavaScript DOM & Performance Safety, JavaScript State & Reliability, JavaScript Code Structure & Hygiene, Code Quality - Hygiene & Safety, Code Quality - Structure & Readability, Code Quality - Errors & Reliability, Code Quality - Architecture & Dependencies; AND Browser Audit Phase = "Development".
-- \`scores.architectureReview\` → Manual Checklist Phase = "Architecture & Code Review"
-- \`scores.testing\` → Manual Checklist Phase = "Testing"
-- \`scores.security\` → Security phase/groups across all three audits.
-- \`scores.performance\` → Performance phase/groups across all three audits.
-- \`scores.accessibility\` → Accessibility phase/groups across all three audits.
-- \`scores.authorValidation\` → Manual Checklist Phase = "Author Validation"
-- \`scores.preGoLive\` → Manual Checklist Phase = "Pre-GoLive"
-- \`scores.postGoLive\` → Manual Checklist Phase = "Post-GoLive"
-- \`scores.processGovernance\` → Code Audit groups: Version Control & Repository, Testing & Quality Gates, Project Configuration, GenAI Tools & Code Quality; AND Manual Checklist Phase = "Process & Governance".
-
-#### Overall score
-- \`scores.overall\` = weighted average:
-  - accessibility 15%, performance 15%, security 15%, development 15%, processGovernance 5%, testing 5%, discovery 3%, design 3%, setup 3%, contentQuality 3%, userExperience 3%, visualDesign 3%, preGoLive 3%, postGoLive 3%, authorValidation 2%, architectureReview 2%, internationalization 2%.
-  - Skip any domain with no answered rows (exclude from weight total and renormalise).
-
-#### Manual per-item metrics
-For each \`manual.*\` key in the metrics template, find the corresponding Manual Checklist row by matching Phase + Sub-Group + item intent. Set value to:
-- "1" if \`Implemented?\` = "Yes"
-- "0" if \`Implemented?\` = "No"
-- "" if empty
-
-Mappings by key prefix → Phase → Sub-Group:
-- \`manual.discovery.*\` → Phase "Discovery" rows in order: businessObjectivesAndKpisDefined, targetAudienceAndPersonasDefined, cdnProviderAndRepoIdentified, edsAuthoringAndContentRequirementsDefined, edsBlockRequirementsAndStructureDefined, integrationAndMarTechRequirementsDefined, nonFunctionalRequirementsDefined, seoRoutingAndLocalizationDefined.
-- \`manual.design.*\` → Phase "Design": hldDocumented, blockAndFragmentDesignComplete, performanceByDesignGoalsDefined, responsiveAndAccessibilityStrategyDefined, seoAndErrorStrategyDesigned.
-- \`manual.setup.*\` → Phase "Setup": cdnConfigured, repoAndContentSourceConfigured, aemSidekickInstalledAndConfigured, ciCdPipelineConfigured, devStagingProdEnvironmentsSetUp, prProcessAndBranchingStrategyDefined, i18nAndTranslationSetup.
-- \`manual.visualDesign.*\` → Phase "Visual Design": uiMatchesDesignMockupsAtAllViewports, brandingAndInteractiveStatesConsistent.
-- \`manual.userExperience.*\` → Phase "User Experience": coreUserFlowsIntuitive, loadingEmptyErrorStatesPresent, formValidationUxVerified.
-- \`manual.contentQuality.*\` → Phase "Content Quality": copySpellingGrammarLegalTextVerified, cookieConsentMeetsGdprCcpa.
-- \`manual.testing.*\` → Phase "Testing": contentPreviewAndPublishWorkflowValidated, functionalAndE2ETestingComplete, unitTestsAutomatedInCiCd, rumSetUpAndConfigured, crossBrowserAndDeviceTestingComplete.
-- \`manual.security.*\` → Phase "Security": apiEndpointsSecured, rbacImplemented, dataEncryptionAndGdprCompliant, secretsManagementAndPenTestingDone.
-- \`manual.authorValidation.*\` → Phase "Author Validation": authorTrainingAndSidekickVerified, authorWorkflowValidatedInDocsSheets, blockUsabilityReviewComplete, documentToWebRenderingValidated.
-- \`manual.performance.*\` → Phase "Performance": cdnCachingStrategyValidated, rumMonitoringAndAlertsConfigured, aboveTheFoldLoadsWithin2500ms.
-- \`manual.accessibility.*\` → Phase "Accessibility": screenReaderTestingComplete, keyboardOnlyNavigationTested, axeWaveToolsRunAndRemediated.
-- \`manual.i18n.*\` → Phase "Internationalization": rtlLayoutVerified, textExpansionDoesNotBreakLayout, localeFormattingCorrect.
-- \`manual.architectureReview.*\` → Phase "Architecture & Code Review": designTokensMatchFigma, webfontStrategyReviewed.
-- \`manual.preGoLive.*\` → Phase "Pre-GoLive": cdnCachingAndDnsFinalized, deploymentAndRollbackPlanCreated, previewAndLiveDomainValidated, finalE2eSmokeLoadTestingComplete, seoLaunchReadinessVerified.
-- \`manual.postGoLive.*\` → Phase "Post-GoLive": centralizedLoggingAndAlertsConfigured, cwvRumCdnMonitoringSetup, authorSupportAndHelpdeskEstablished, incidentResponseAndSlasDefined, seoIndexingAndAnalyticsMonitored, continuousImprovementPlanInPlace.
-- \`manual.governance.*\` → Phase "Process & Governance": projectManagementToolActivelyUsed, codeReviewProcessWithSlaDefined, qaEnvironmentMirrorsProduction, genAiGovernancePolicyDocumented.
-
-#### Granular detail fields
-After computing all scores and summaries, populate every \`browser.*\` and \`code.*\` key by scanning the loaded audit rows.
-
-**Value rules (apply to all granular fields):**
-- **Pass/fail fields** (no numeric suffix): 1 if \`Implemented?\` = "Yes", 0 if "No", "" if empty.
-- **Count fields** (key contains "Count" or implies a count of violations): extract integer from Comments/Evidence. Use 0 if the item passed ("Yes") and no count is recorded. Use "" if empty.
-- **Measurement fields** (Ms, Kb, Score, Percent): extract the numeric value from Comments/Evidence. Use "" if not found.
-- **Inverted negative fields** (field name implies "detected" or "has issue"): still apply 1=Yes / 0=No. For example, \`mixedContentDetected\` = 0 when the row says "Yes" (meaning no mixed content detected = pass).
-
-**browser.accessibility** (Browser Audit rows):
-- \`skipLinksImplemented\` → item "Skip links implemented"
-- \`lighthouseAccessibilityScore\` → item "Lighthouse accessibility score >= 90" → extract score number
-- \`wcagViolationsCritical\` → same item → extract critical violation count (0 if Yes)
-- \`wcagViolationsTotal\` → same item → extract total violation count (0 if Yes)
-
-**browser.security** (Browser Audit rows):
-- \`inlineScriptsWithoutNonce\` → "No inline scripts without nonce/hash"
-- \`formActionsUseHttps\` → "Form actions use HTTPS only"
-- \`cspHeaderPresent\` → "Content-Security-Policy (CSP) response header present"
-- \`cspHasUnsafeDirectives\` → same row → 0 if Yes (no unsafe directives), 1 if No (has unsafe)
-- \`xContentTypeOptionsPresent\` → "X-Content-Type-Options: nosniff present" (same row as X-Frame-Options)
-- \`xFrameOptionsOrCspFrameAncestors\` → same row
-- \`referrerPolicyPresent\` → same row
-- \`zeroJsErrorsInConsole\` → "Zero JavaScript errors or unhandled promise rejections"
-- \`noDeprecatedApiWarnings\` → "No deprecated browser API usage warnings"
-- \`mixedContentDetected\` → "No mixed content warnings" → 0 if Yes (none), 1 if No (detected)
-- \`tlsCertificateValid\` → "TLS certificate valid and not expired"
-- \`sensitiveDataInClientStorage\` → "No sensitive data... in Application panel" → 0 if Yes, 1 if No
-- \`cookieSameSiteSecureFlags\` → "Cookies used for session management have SameSite"
-- \`websocketUsesWss\` → "WebSocket connections use wss://"
-- \`noCspViolationsInConsole\` → "No resources loaded from origins not listed in CSP"
-
-**browser.performance** (Browser Audit rows):
-- \`lazyLoadingBelowFold\` → "Lazy loading for below-the-fold images"
-- \`cssDeliveryOptimized\` → "CSS delivery optimized"
-- \`unusedJsRemoved\` → "Unused JS removed"
-- \`webfontUsesWoff2\` → "Webfont files use WOFF2"
-- \`lighthousePerformanceScore\` → "Lighthouse performance score >= 90" → extract score
-- \`lcpMs\` → "LCP < 2.5s; CLS < 0.1; INP < 200ms" → extract LCP value in ms
-- \`clsScore\` → same row → extract CLS score
-- \`inpMs\` → same row → extract INP value in ms
-- \`longTasksOnMainThread\` → "No JavaScript long tasks (> 50ms)" → 0 if Yes (none), 1 if No
-- \`tbtWithinBudget\` → same row → 1 if Yes, 0 if No
-- \`ttfbMs\` → "Time to First Byte (TTFB) < 800ms" → extract TTFB in ms
-- \`lighthouseSeoScore\` → "Lighthouse SEO score >= 90 and Best Practices score >= 90" → extract SEO score
-- \`lighthouseBestPracticesScore\` → same row → extract Best Practices score
-- \`totalPageWeightKb\` → "Total page weight within performance budget" → extract size in KB
-- \`compressionEnabled\` → "Text resources served with gzip or Brotli"
-- \`imageOptimizationIssues\` → "All images within size budget" → 0 if Yes, extract count from Comments if No
-- \`resourcesOverHttp2OrHttp3\` → "Resources served over HTTP/2 or HTTP/3"
-- \`unusedJsCssPercent\` → "JavaScript and CSS coverage... < 50% unused" → extract percent from Comments
-- \`fcpMs\` → "FCP < 1.8s and Speed Index < 3.4s" → extract FCP in ms
-- \`speedIndexMs\` → same row → extract Speed Index in ms
-- \`duplicateNetworkRequests\` → "No duplicate network requests" → 0 if Yes, extract count if No
-
-**browser.development** (Browser Audit rows):
-- \`metaDescriptionPresent\` → "Meta description tag present on all pages"
-- \`metaDescriptionLength\` → same row → extract character length from Comments
-- \`faviconPresent\` → "Favicon present in head"
-- \`canonicalUrlPresent\` → "Canonical URL present on all indexable pages"
-- \`hreflangImplemented\` → "Alternate language annotations (hreflang)"
-- \`cssBeforeScriptsInHead\` → "CSS link and style tags appear before script tags"
-- \`externalLinksHaveNoopener\` → "External links with target=_blank include rel=noopener"
-- \`customErrorPagesExist\` → "Custom error pages for 404 and 5xx"
-- \`responsiveAtAllBreakpoints\` → "Page layout tested at standard breakpoints"
-- \`clsInPerformancePanel\` → "CLS < 0.1 verified in Performance panel"
-- \`noRenderBlockingResources\` → "No render-blocking resources identified"
-- \`noConsoleLogInProduction\` → "No console.log or developer debug output"
-- \`noViolationMessagesInConsole\` → "No Violation messages in Console panel"
-- \`noForcedSyncLayoutsInFlameChart\` → "No forced synchronous layouts (layout thrashing)"
-- \`noExcessiveRepaintsOnScroll\` → "No excessive repaints on scroll"
-- \`noDetachedDomNodes\` → "No detached DOM nodes"
-- \`preloadedResourcesConsumed\` → "Preloaded resources are consumed within the page load"
-- \`webFontsLoadWithoutFoit\` → "Web fonts load without FOIT"
-
-**code.html.semantics** (Code Audit rows):
-- \`semanticToDivRatioPass\` → "Semantic-to-div ratio above threshold"
-- \`headingHierarchyCorrect\` → "Correct heading hierarchy maintained"
-- \`singleH1PerPage\` → "Single h1 per page"
-
-**code.html.structure** (Code Audit rows):
-- \`domSourceOrderMatchesTabOrder\` → "DOM source order matches visual tab order"
-- \`criticalContentInRawHtml\` → "Page content hierarchy intact"
-- \`excessiveDomDepth\` → "Avoid excessive DOM depth" → 0 if Yes (no issue), 1 if No (has issue)
-
-**code.html.forms** (Code Audit rows):
-- \`radioCheckboxHaveFieldsetLegend\` → "Radio/checkbox groups wrapped in fieldset with legend"
-- \`allInputsHaveLabels\` → "All inputs have associated labels"
-- \`missingLabelsCount\` → same row → extract count (0 if Yes)
-- \`placeholderUsedAsLabel\` → "Placeholder not used as label" → 0 if Yes (good), 1 if No (bad)
-- \`errorMessagesLinkedToInputs\` → "Error messages programmatically associated with inputs"
-- \`interactiveElementsHaveAccessibleNames\` → "Accessible names for interactive elements"
-- \`inlineStylesCount\` → "Avoid inline styles" → extract count (0 if Yes)
-
-**code.html.media** (Code Audit rows):
-- \`decorativeImagesHaveEmptyAlt\` → "Images with role='presentation' or aria-hidden='true' have empty alt"
-- \`altTextQualityPass\` → "Alt text is not a filename or path"
-- \`missingOrInvalidAltCount\` → same row → extract count (0 if Yes)
-- \`tablesHaveTheadTbody\` → "Tables use thead and tbody"
-- \`tableHeadersUseTh\` → "Table headers use th"
-- \`listsUseUlOrOlCorrectly\` → "Lists use ul or ol correctly"
-- \`imgElementsHaveDimensionsForCls\` → "Content img elements have explicit width and height HTML attributes"
-
-**code.html.metadata** (Code Audit rows):
-- \`pageTitlePresent\` → "Page title exists; is >10 characters"
-- \`pageTitleQualityPass\` → same row
-- \`metaViewportConfigured\` → "Meta viewport configured correctly"
-- \`charsetDeclaredInHead\` → "Charset meta tag declared in head"
-- \`langAttributeValid\` → "Language attribute (lang) on html element is a valid BCP 47 tag"
-- \`dirAttributeForRtl\` → "Direction attribute (dir) specified"
-- \`duplicateIdsCount\` → "No duplicate IDs" → extract count (0 if Yes)
-- \`invalidHtmlNestingCount\` → "No invalid HTML nesting" → extract count (0 if Yes)
-- \`htmlValidationErrorCount\` → "HTML validates without errors" → extract count (0 if Yes)
-- \`ariaRolesDontDuplicateSemantics\` → "ARIA roles do not duplicate native semantics"
-- \`noAriaMisuse\` → "Avoid misuse of ARIA roles"
-- \`ariaUsedOnlyWhenNecessary\` → "ARIA used only when necessary"
-- \`metaTagsDoNotBlockZoom\` → "Meta tags do not block zoom"
-- \`brokenLinksCount\` → "No broken links" → extract count (0 if Yes)
-
-**code.css.tokens** (Code Audit rows):
-- \`cssVarsUsedForColors\` → "CSS variables used for all colors"
-- \`cssVarsUsedForSpacing\` → "CSS variables used for spacing scale"
-- \`cssVarsUsedForTypography\` → "CSS variables used for typography scale"
-- \`cssVarsUsedForFontFamily\` → "Font-family declarations defined at :root or body level using CSS variables"
-- \`hardcodedHexOrRgbCount\` → "No hardcoded hex/rgb color values" → extract count (0 if Yes)
-- \`hardcodedPixelSpacingCount\` → "No hardcoded pixel spacing where tokens exist" → extract count (0 if Yes)
-
-**code.css.maintainability** (Code Audit rows):
-- \`namingConventionsConsistent\` → "Consistent naming conventions" (CSS Maintainability sub-group)
-- \`classNamesAvoidColorOrPosition\` → "Class names do not contain hex values or color names"
-- \`selectorsColocatedInSameFile\` → "CSS selectors for same component co-located in same file"
-- \`printStylesheetHidesNonEssential\` → no matching checklist item → leave as ""
-
-**code.css.layout** (Code Audit rows):
-- \`modernLayoutUsed\` → "Layout containers use display:flex or display:grid"
-- \`mobileFirstMediaQueries\` → "min-width media queries outnumber max-width queries"
-- \`standardBreakpointsOnly\` → "Standard breakpoints only"
-- \`responsiveImagesByDefault\` → "Responsive images by default"
-- \`zIndexEscalationIssues\` → "Avoid z-index escalation" → 0 if Yes (no issues), 1 if No (has issues)
-
-**code.css.performance** (Code Audit rows):
-- \`noExpensiveBoxShadows\` → "Avoid expensive box-shadows"
-- \`noHeavyCssFilters\` → "Avoid heavy CSS filters"
-- \`noInfiniteAnimationsOnNonLoaders\` → "No infinite CSS animations on non-loading elements"
-- \`cssCompatibilityIssuesCount\` → "All CSS properties/values supported in target browsers" → extract count (0 if Yes)
-- \`vendorPrefixIssues\` → "Avoid vendor prefixes unless required" → 0 if Yes, 1 if No
-
-**code.css.quality** (Code Audit rows):
-- \`duplicateCssRulesCount\` → "No duplicated CSS rules" → extract count (0 if Yes)
-- \`unusedCssSelectorsCount\` → "No unused CSS selectors" → extract count (0 if Yes)
-- \`propertyOrderingConsistent\` → "Consistent property ordering"
-
-**code.javascript.loading** (Code Audit rows):
-- \`noBlockingScriptsInHead\` → "No blocking scripts in head"
-- \`asyncOrDeferUsed\` → "Use async or defer appropriately"
-- \`thirdPartyScriptsLazyLoaded\` → "Third-party scripts lazy loaded"
-- \`noUnusedModulesLoaded\` → "No JS files loaded on pages where their exports are unused"
-- \`noMarketingTagsInHead\` → "No marketing tags in head"
-- \`userFacingStringsUseI18nKeys\` → "User-facing strings in component render/template functions use i18n keys"
-- \`noBinariesInRepo\` → "No binaries stored in repository"
-- \`errorMessagesFollowPattern\` → "Error messages follow consistent pattern"
-
-**code.javascript.dom** (Code Audit rows):
-- \`noTightDomCoupling\` → "Avoid tight DOM coupling"
-- \`noForcedSyncLayoutsInCode\` → "Avoid forced synchronous layouts" (Code Audit)
-- \`timerLeaksCount\` → "All setTimeout/setInterval calls have corresponding clear calls" → extract count (0 if Yes)
-- \`pollingWithoutObserverCount\` → "setInterval for DOM/state checks flagged" → extract count (0 if Yes)
-- \`prefersNativeBrowserApis\` → "Prefer native browser APIs"
-- \`modernEs6SyntaxUsed\` → "Modern ES6+ syntax used"
-
-**code.javascript.state** (Code Audit rows):
-- \`noMemoryLeakRisks\` → "Avoid memory leaks"
-- \`eventListenersCleanedUp\` → "Event listeners cleaned up properly"
-- \`asyncAwaitUsed\` → "Async logic uses async/await"
-- \`promisesHandledCorrectly\` → "Promises handled correctly"
-- \`stateMutationThroughSetters\` → "State changes occur through defined setters/reducers/actions"
-- \`noSharedStateMutation\` → "No mutation of shared state"
-- \`noSideEffectsInPureFunctions\` → "No side effects in pure functions"
-- \`consistentReturnTypes\` → "Consistent return types"
-- \`noStateMutationInLoops\` → "No setState/dispatch/state-mutation calls inside for/while loops"
-
-**code.javascript.structure** (Code Audit rows):
-- \`globalVariablesCount\` → "No global variables" → extract count (0 if Yes)
-- \`jsScopedToComponent\` → "JS scoped to component or block"
-- \`codingStyleConsistent\` → "Consistent coding style"
-- \`deeplyNestedCallbacksCount\` → "Avoid deeply nested callbacks" → extract count (0 if Yes)
-- \`callChainDepthWithinLimit\` → "Call chain depth <= 4 levels"
-- \`inputValidationPresent\` → "All external inputs are validated, sanitized, and secured"
-- \`noUnreachableCode\` → "No unreachable code"
-- \`noEmptyCatchBlocks\` → "No empty catch blocks"
-- \`noUnusedNpmPackages\` → "No unused npm/yarn packages"
-- \`noUnusedComponentProps\` → "No unused component props"
-
-**code.accessibility.wcag** (Code Audit rows):
-- \`wcag21AAComplianceMet\` → "WCAG 2.1 AA compliance met"
-- \`dynamicContentChangesAnnounced\` → "Announce dynamic content changes"
-
-**code.accessibility.components** (Code Audit rows):
-- \`modalDialogAriaCorrect\` → "Modal/dialog elements have role='dialog'"
-- \`videoCaptionsPresent\` → "video elements have track kind='captions'"
-- \`audioTranscriptsPresent\` → "audio elements have adjacent transcript"
-- \`noFocusTrapMisuse\` → "No focus-trap calls outside of modal/dialog components"
-
-**code.accessibility.css** (Code Audit rows):
-- \`visibleFocusStylesPresent\` → "Visible focus styles present"
-- \`hoverRulesHaveFocusEquivalent\` → "All CSS :hover rules have corresponding :focus"
-- \`visuallyHiddenPatternCorrect\` → "Visually-hidden patterns use appropriate CSS"
-
-**code.security.clientCode** (Code Audit rows):
-- \`noEvalOrFunctionString\` → "No eval() or Function(string)"
-- \`noDocumentWrite\` → "No document.write or document.writeln"
-- \`externalScriptsHaveSri\` → "External scripts use Subresource Integrity (SRI)"
-- \`noUnsanitizedInnerHtml\` → "No unsanitized user input in innerHTML"
-
-**code.security.secrets** (Code Audit rows):
-- \`noHardcodedApiKeys\` → "No hardcoded API keys or secrets in source"
-- \`noCredentialsInUrls\` → "No credentials or tokens in URLs or query parameters"
-- \`noSensitiveDataInComments\` → "No sensitive data in client-side comments or console logs"
-- \`noInsecureStorageForSecrets\` → "No insecure storage usage"
-- \`noPiiInStorageWithoutConsent\` → "No PII stored in cookies or browser storage without encryption"
-
-**code.security.dependencies** (Code Audit rows):
-- \`noKnownVulnerableDependencies\` → "No known vulnerable dependencies"
-
-**code.security.input** (Code Audit rows):
-- \`noSensitiveDataInClientVisibleAttributes\` → "No sensitive data exposed in client-visible IDs or data attributes"
-
-**code.quality.hygiene** (Code Audit rows):
-- \`lintErrorsCount\` → "Zero lint errors" → extract count (0 if Yes)
-- \`unusedVariablesCount\` → "No unused variables" → extract count (0 if Yes)
-- \`unusedFunctionsCount\` → "No unused functions" → extract count (0 if Yes)
-- \`unusedImportsCount\` → "No unused imports" → extract count (0 if Yes)
-- \`deadCodePathsCount\` → "No dead code paths" → extract count (0 if Yes)
-- \`deadCodeFilesCount\` → "No dead code files (unreferenced modules)" → extract count (0 if Yes)
-- \`commentedOutCodeCount\` → "No commented-out production code" → extract count (0 if Yes)
-- \`implicitGlobalsCount\` → "No implicit globals" → extract count (0 if Yes)
-- \`fileStructureConsistent\` → "Consistent file structure"
-- \`duplicateConstantsCount\` → "No duplicated constants" → extract count (0 if Yes)
-
-**code.quality.readability** (Code Audit rows):
-- \`variableNamingViolationsCount\` → "Variable names >2 characters" → extract count (0 if Yes)
-- \`functionNamingViolationsCount\` → "Function names start with verb" → extract count (0 if Yes)
-- \`namingConventionsConsistent\` → "Consistent naming conventions" (Code Quality sub-group)
-- \`complexConditionsCount\` → "No nested ternary expressions" → extract count (0 if Yes)
-- \`missingGuardClausesCount\` → "Functions with if-block wrapping >80% of function body" → extract count (0 if Yes)
-- \`oversizedFilesOrFunctionsCount\` → "Average file size under 500 LOC; functions under 40 lines" → extract count (0 if Yes)
-- \`singleResponsibilityViolationsCount\` → "Files have single responsibility and clear module boundaries" → extract count (0 if Yes)
-- \`readmePresent\` → "README present"
-
-**code.quality.reliability** (Code Audit rows):
-- \`inconsistentErrorHandlingCount\` → "Consistent error handling strategy" → extract count (0 if Yes)
-- \`poorErrorLoggingCount\` → "Errors logged meaningfully" → extract count (0 if Yes)
-- \`ungracefulErrorsCount\` → "Errors fail gracefully" → extract count (0 if Yes)
-- \`magicNumbersCount\` → "Avoid magic numbers" → extract count (0 if Yes)
-- \`uncentralizedConstantsCount\` → "Constants centralized" → extract count (0 if Yes)
-- \`hardcodedBehaviorCount\` → "Config-driven behavior" → extract count (0 if Yes)
-- \`duplicatedUtilitiesCount\` → "Shared utilities extracted" → extract count (0 if Yes)
-- \`duplicateCodePercent\` → "Duplicate code percentage within standard threshold" → extract percent from Comments (0 if Yes and not recorded)
-
-**code.quality.architecture** (Code Audit rows):
-- \`hardcodedEnvValuesCount\` → "No hardcoded environment values" → extract count (0 if Yes)
-- \`circularDependenciesCount\` → "Avoid circular dependencies" → extract count (0 if Yes)
-- \`staleTodoFixmeCount\` → "No stale TODO/FIXME comments" → extract count (0 if Yes)
-
-**code.governance** (Code Audit rows):
-- \`vcs.gitRepositoryInitialized\` → "Git repository initialized"
-- \`vcs.gitignorePresent\` → ".gitignore file present"
-- \`vcs.lockfileCommitted\` → "Package lock file committed"
-- \`quality.preCommitHooksConfigured\` → "Pre-commit hooks configured"
-- \`config.nodeVersionSpecified\` → "Node.js version specified via engines field"
-- \`genai.noMockDataInProduction\` → "Hardcoded mock data or example values left in production code" → 0 if Yes (has mock data = bad), 1 if No (no mock data = good)
-
-#### Components requiring attention — up to 5
-- Parse the Evidence column of all failed ("No") rows from Code Audit and Browser Audit.
-- Extract workspace-relative file/component paths or filenames.
-- Group by path; count failedChecks and criticalFailures per path.
-- Compute healthScore = 100 − (failedChecks / totalChecksForThatPath × 100), rounded to nearest integer.
-- Sort by failedChecks descending. Write top 5 into \`components.1\`–\`components.5\`:
-  - \`components.N.name\` = filename (basename of path)
-  - \`components.N.path\` = workspace-relative path
-  - \`components.N.failedChecks\` = count
-  - \`components.N.criticalFailures\` = count of Critical-importance failures for this path
-  - \`components.N.healthScore\` = computed score
-- \`components.count\` = actual number written (max 5). Use "" for each field if no evidence paths are present.
-
-#### Risk index — per domain
-- "High" if score < 60, "Medium" if 60–79, "Low" if ≥ 80. Use "" if no answered rows exist.
-- Populate one \`risk.*\` key per category, matching the 17 domain scores:
-  \`risk.discovery\`, \`risk.contentQuality\`, \`risk.internationalization\`, \`risk.design\`, \`risk.userExperience\`, \`risk.visualDesign\`, \`risk.setup\`, \`risk.development\`, \`risk.architectureReview\`, \`risk.testing\`, \`risk.security\`, \`risk.performance\`, \`risk.accessibility\`, \`risk.authorValidation\`, \`risk.preGoLive\`, \`risk.postGoLive\`, \`risk.processGovernance\`.
-
-#### Overall status
-- \`status.ragRating\` = "Red" if scores.overall < 60, "Amber" if 60–79, "Green" if ≥ 80.
-- \`status.goLiveReady\` = "Yes" if ragRating is "Green" AND mandatoryFailed = 0 AND criticalFailed = 0, else "No".
-- \`status.mandatoryPassRate\` = (mandatory rows passed / total mandatory rows) × 100, rounded to 1 decimal, across all audits.
-- \`status.criticalPassRate\` = same for Critical importance rows.
-- \`status.highPassRate\` = same for High importance rows.
-- \`status.totalBlockingIssues\` = mandatoryFailed + criticalFailed.
-
-#### Trend snapshot
-Copy current values: \`trend.totalIssues\` = overall.failed, \`trend.criticalIssues\` = criticalFailed, \`trend.overallCompliance\` = scores.overall, \`trend.accessibilityCompliance\` = scores.accessibility, \`trend.performanceCompliance\` = scores.performance, \`trend.securityCompliance\` = scores.security, \`trend.developmentCompliance\` = scores.development.
-
-#### Top issues — up to 10
-- Select all "No" rows from all three audits. Sort by: Importance (Critical → High → Medium) then Mandatory (Yes before No).
-- Fill \`topIssues.1\` through \`topIssues.10\`: auditType ("Code Audit" / "Browser Audit" / "Manual"), phase (Phase column value), group (Group column value), subGroup (Sub-Group column value), severity (Importance value), mandatory (Mandatory value), description (Checklist Item text, max 200 chars), evidence (Evidence or Comments column value).
-- Set \`topIssues.count\` = actual number written (max 10).
-
-### Step 4 — Write metrics
-7. \`write-metrics\` with the full computed key-value object.
+### Step 4 — Show audit dashboard
+7. Call \`show-audit-dashboard\` with:
+   - \`metrics\`: the same flat key-value object from \`compute-metrics\`
+   - \`projectName\`: from user answer
 
 ### Step 5 — Cleanup
 8. \`cleanup-workspace\` — removes any auto-generated JSON, MD, and Python files, keeping only CSVs.
@@ -822,10 +467,11 @@ Copy current values: \`trend.totalIssues\` = overall.failed, \`trend.criticalIss
 9. Print a concise summary table: RAG rating, go-live readiness, overall score, all 17 domain scores with their risk ratings, criticalFailed count, mandatoryFailed count, totalBlockingIssues, and the path to the generated metrics file.
 
 ## Rules
-- Use ONLY \`read-full-checklist\` to load audit data — never \`read-checklist-row\` for analysis.
-- For Manual Checklist rows, only "Yes" counts as passed.
+- Do NOT manually compute metrics — \`compute-metrics\` handles all computation server-side.
 - Leave a metric value as "" if it cannot be derived — do NOT guess or fabricate.
-- Never stop mid-generation.`,
+- Never stop mid-generation.
+
+Begin immediately.`,
       },
     }],
   })
@@ -1180,6 +826,99 @@ server.registerTool(
 
     return {
       content: [{ type: 'text', text: JSON.stringify({ ok: true, path: filePath, totalKeys: records.length, written }) }],
+    };
+  }
+);
+
+server.registerTool(
+  'compute-metrics',
+  {
+    description:
+      'Read all completed audit checklists (code-audit, browser-audit, manual-audit) and compute every metric value deterministically. Returns the full flat key-value object ready to pass to write-metrics and show-audit-dashboard. Missing audit files are skipped gracefully.',
+    inputSchema: {
+      projectName: z.string().optional().describe('Project name for metadata.'),
+      appUrl: z.string().optional().describe('App URL audited in browser audit.'),
+      repoUrl: z.string().optional().describe('Git remote URL. Auto-derived if omitted.'),
+      auditorName: z.string().optional().describe('Name of the auditor.'),
+      auditDate: z.string().optional().describe('ISO date string. Defaults to today.'),
+      workspacePath: z.string().optional().describe('Absolute path to directory containing filled checklist CSVs. Defaults to .ui-audit/ workspace.'),
+      codeAuditPath: z.string().optional().describe('Absolute path to a filled Code Audit CSV. Overrides workspace lookup for code-audit.'),
+      browserAuditPath: z.string().optional().describe('Absolute path to a filled Browser Audit CSV. Overrides workspace lookup for browser-audit.'),
+      manualAuditPath: z.string().optional().describe('Absolute path to a filled Manual Checklist CSV. Overrides workspace lookup for manual-audit.'),
+    },
+  },
+  async ({ projectName, appUrl, repoUrl, auditorName, auditDate, workspacePath, codeAuditPath, browserAuditPath, manualAuditPath }) => {
+    const { parse: csvParse } = await import('csv-parse/sync');
+    const warnings = [];
+    const baseDir = workspacePath || config.workspaceDir;
+
+    const loadCsv = async (filePath) => {
+      const content = await readFile(filePath, 'utf-8');
+      // Strip UTF-8 BOM (\uFEFF) — common in CSVs exported from Excel/Sheets
+      const clean = content.replace(/^\uFEFF/, '');
+      return csvParse(clean, { columns: true, skip_empty_lines: true, bom: true });
+    };
+
+    const loadChecklist = async (templateName, explicitPath) => {
+      // If an explicit path is provided, use it directly
+      if (explicitPath) {
+        try {
+          const rows = await loadCsv(explicitPath);
+          return rows;
+        } catch (e) {
+          warnings.push(`${templateName}: explicit path ${explicitPath} failed — ${e.message}`);
+          return [];
+        }
+      }
+      // Otherwise try workspace, then templates dir as fallback
+      const filename = config.templates[templateName];
+      const candidates = [
+        resolve(baseDir, filename),
+        resolve(config.templatesDir, filename),
+      ];
+      for (const candidate of candidates) {
+        try {
+          const rows = await loadCsv(candidate);
+          if (candidate !== candidates[0]) {
+            warnings.push(`${templateName}: not found in workspace, loaded from templates dir (${candidate}).`);
+          }
+          return rows;
+        } catch {
+          // try next candidate
+        }
+      }
+      warnings.push(`${templateName} not found in workspace (${baseDir}) or templates (${config.templatesDir}) — skipped.`);
+      return [];
+    };
+
+    const [codeRows, browserRows, manualRows] = await Promise.all([
+      loadChecklist('code-audit', codeAuditPath),
+      loadChecklist('browser-audit', browserAuditPath),
+      loadChecklist('manual-audit', manualAuditPath),
+    ]);
+
+    const metrics = computeAllMetrics(codeRows, browserRows, manualRows, {
+      projectName: projectName || '',
+      appUrl: appUrl || '',
+      repoUrl: repoUrl || '',
+      auditorName: auditorName || '',
+      auditDate: auditDate || '',
+    });
+
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          ok: true,
+          metrics,
+          sources: {
+            codeAudit: codeRows.length,
+            browserAudit: browserRows.length,
+            manualAudit: manualRows.length,
+          },
+          warnings,
+        }),
+      }],
     };
   }
 );
