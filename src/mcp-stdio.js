@@ -1,15 +1,93 @@
 #!/usr/bin/env node
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server';
 import { z } from 'zod';
 import LockManager from './lock-manager.js';
 import CsvManager from './csv-manager.js';
 import LocalAuditTool from './local-audit-tool.js';
 import { validatePayload } from './validator.js';
+import { readFileSync } from 'fs';
 import { readFile, writeFile, copyFile, access, mkdir, readdir, unlink } from 'fs/promises';
-import { resolve } from 'path';
+import { dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
+import esbuild from 'esbuild';
 import config from './config.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+const defaultAuditMetrics = JSON.parse(
+  readFileSync(resolve(__dirname, 'default-audit-metrics.json'), 'utf8')
+);
+const PRODUCT_AUDIT_DASHBOARD_URI = 'ui://ui-audit/audit-dashboard.html';
+const HTML2PDF_VENDOR_URI = 'ui://ui-audit/vendor/html2pdf.bundle.min.js';
+const html2pdfVendorPath = resolve(__dirname, 'progen-craft', 'design-system', 'utils', 'html2pdf.bundle.min.js');
+const auditDashboardHtmlPath = resolve(__dirname, 'app-ui', 'audit-dashboard.html');
+const auditDashboardCssPath = resolve(__dirname, 'app-ui', 'audit-dashboard.css');
+const auditDashboardMcpEntryPath = resolve(__dirname, 'app-ui', 'audit-dashboard-mcp-entry.js');
+const designSystemCssDir = resolve(__dirname, 'progen-craft', 'design-system', 'css');
+const designSystemCssFragments = [
+  'ds-tokens.css',
+  'ds-primitives-row.css',
+  'ds-layouts-metric-category.css',
+  'ds-components-donut-seg.css',
+  'ds-components-mini-donut.css',
+  'ds-components-stacked-bar.css',
+  'ds-components-score-tier.css',
+  'ds-motion-preference.css',
+  'ds-components-pdf-download.css',
+  'ds-components-issues-table.css',
+  'ds-components-scores-bar-chart.css',
+];
+
+async function readBundledDesignSystemCss() {
+  const parts = await Promise.all(
+    designSystemCssFragments.map((name) => readFile(resolve(designSystemCssDir, name), 'utf-8'))
+  );
+  return parts.join('\n');
+}
+
+async function buildAuditDashboardContents(uri, variables) {
+  let html = await readFile(auditDashboardHtmlPath, 'utf-8');
+  const [css, bundleResult, dsCss] = await Promise.all([
+    readFile(auditDashboardCssPath, 'utf-8'),
+    esbuild.build({
+      entryPoints: [auditDashboardMcpEntryPath],
+      bundle: true,
+      write: false,
+      platform: 'browser',
+      format: 'esm',
+    }),
+    readBundledDesignSystemCss(),
+  ]);
+  const bundledJs = bundleResult.outputFiles[0].text;
+  html = html.replace(
+    /<link\s+rel=["']stylesheet["']\s+href=["']\.\.\/progen-craft\/design-system\/progen-craft-design-system\.css["']\s*\/?>\s*<link\s+rel=["']stylesheet["']\s+href=["']audit-dashboard\.css["']\s*\/?>/i,
+    `<style>\n${dsCss.trimEnd()}\n${css.trimEnd()}\n</style>`
+  );
+  html = html.replace(
+    /<script\s+type=["']module["']\s+src=["']audit-dashboard-entry\.js["']\s*><\/script>/i,
+    `<script type="module">\n${bundledJs.trimEnd()}\n</script>`
+  );
+  const raw = variables?.data ?? uri.searchParams.get('data');
+  let tailScripts = '';
+  if (raw) {
+    try {
+      const parsed = JSON.parse(decodeURIComponent(raw));
+      const safe = JSON.stringify(parsed).replace(/</g, '\\u003c');
+      tailScripts = `<script>window.__PRODUCT_AUDIT_DASHBOARD__=${safe};</script>`;
+    } catch {
+      /* ignore invalid data param */
+    }
+  }
+  if (tailScripts) {
+    html = html.replace('</body>', `${tailScripts}</body>`);
+  }
+  return {
+    contents: [{ uri: uri.href, mimeType: RESOURCE_MIME_TYPE, text: html }],
+  };
+}
 
 
 const lockManager = new LockManager();
@@ -47,6 +125,43 @@ server.registerResource(
   async (uri) => {
     const content = await readFile(resolve(config.templatesDir, config.templates['metrics']), 'utf-8');
     return { contents: [{ uri: uri.href, mimeType: 'text/csv', text: content }] };
+  }
+);
+
+registerAppResource(
+  server,
+  'Product Audit Dashboard',
+  PRODUCT_AUDIT_DASHBOARD_URI,
+  {
+    description:
+      'Interactive MCP App view for product UI audit results: checklist summary, total compliance score, domain donut chart, and drill-down domain rows.',
+  },
+  async (uri) => buildAuditDashboardContents(uri, undefined)
+);
+
+server.registerResource(
+  'Product Audit Dashboard (parameterized)',
+  new ResourceTemplate(`${PRODUCT_AUDIT_DASHBOARD_URI}{?data}`, {}),
+  {
+    description:
+      'Same product audit dashboard HTML with URL-encoded JSON in the data query param (tool-driven payload).',
+    mimeType: RESOURCE_MIME_TYPE,
+  },
+  async (uri, variables) => buildAuditDashboardContents(uri, variables)
+);
+
+server.registerResource(
+  'html2pdf-vendor',
+  HTML2PDF_VENDOR_URI,
+  {
+    description: 'html2pdf.js bundle for audit dashboard PDF export.',
+    mimeType: 'application/javascript',
+  },
+  async (uri) => {
+    const text = await readFile(html2pdfVendorPath, 'utf-8');
+    return {
+      contents: [{ uri: uri.href, mimeType: 'application/javascript', text }],
+    };
   }
 );
 
@@ -190,16 +305,13 @@ Do NOT pause, ask questions, or wait for user input at any point after receiving
 Analyse all rows from both audits and compute every metric value using the rules below.
 Use each row's \`Group\`, \`Sub-Group\`, \`Audit Type\`, \`Importance\`, \`Mandatory\`, \`Implemented? (Yes / No)\`, \`Comments\`, and \`Evidence\` columns.
 
-**Summary counts**
-- \`summary.codeAuditTotal / Passed / Failed\` — totals for the code-audit checklist only.
-- \`summary.browserAuditTotal / Passed / Failed\` — totals for the browser-audit checklist only.
-- \`summary.totalChecks\` = codeAuditTotal + browserAuditTotal.
-- \`summary.passed / failed\` = combined Yes / No counts.
-- \`summary.notApplicable\` = rows where \`Implemented? (Yes / No)\` is empty.
-- \`summary.mandatoryFailed\` = No rows where \`Mandatory\` is "Yes".
-- \`summary.criticalFailed\` = No rows where \`Importance\` is "Critical".
-- \`summary.highFailed\` = No rows where \`Importance\` is "High".
-- \`summary.mediumFailed\` = No rows where \`Importance\` is "Medium".
+**Summary counts** (nested keys; legacy flat keys like \`summary.codeAuditTotal\` remain supported by the dashboard)
+- \`summary.browserAudit.total\`, \`summary.browserAudit.passed\`, \`summary.browserAudit.failed\`, \`summary.browserAudit.notApplicable\` — browser-audit checklist only.
+- \`summary.codeAudit.total\`, \`summary.codeAudit.passed\`, \`summary.codeAudit.failed\`, \`summary.codeAudit.notApplicable\` — code-audit checklist only.
+- \`summary.manualAudit.total\`, \`summary.manualAudit.passed\`, \`summary.manualAudit.failed\`, \`summary.manualAudit.notApplicable\` — manual-audit checklist only (if applicable).
+- \`summary.overall.total\` = sum of audit-type totals; \`summary.overall.passed / failed / notApplicable\` = combined across audits.
+- \`summary.overall.mandatoryFailed\` = No rows where \`Mandatory\` is "Yes"; \`summary.overall.criticalFailed / highFailed / mediumFailed\` = No rows by Importance.
+- Legacy flat keys still work: \`summary.totalChecks\`, \`summary.passed\`, \`summary.failed\`, \`summary.notApplicable\`, \`summary.mandatoryFailed\`, \`summary.criticalFailed\`, \`summary.highFailed\`, \`summary.mediumFailed\`.
 
 **Domain scores (0–100)**
 - Score for each domain = (Yes rows in that domain / total rows in that domain) × 100, rounded to 1 decimal. Omit rows with empty \`Implemented\`.
@@ -229,20 +341,21 @@ Count "No" rows matching the relevant Group + Sub-Group + checklist item keyword
 - "High" if domain score < 60, "Medium" if 60–79, "Low" if ≥ 80. Use "" if no rows exist for that domain.
 
 **Overall status**
-- \`overallStatus.ragRating\` = "Red" if uiQualityScore < 60, "Amber" if 60–79, "Green" if ≥ 80.
-- \`overallStatus.mandatoryPassRate\` = (mandatory rows that passed / total mandatory rows) × 100, rounded to 1 decimal.
-- \`overallStatus.criticalPassRate\` = same formula for Critical importance rows.
+- \`status.ragRating\` (preferred) or \`overallStatus.ragRating\` = "Red" if overall score < 60, "Amber" if 60–79, "Green" if ≥ 80 (use \`scores.overall\` or \`overallScores.uiQualityScore\`).
+- \`status.mandatoryPassRate\` or \`overallStatus.mandatoryPassRate\` = (mandatory rows that passed / total mandatory rows) × 100, rounded to 1 decimal.
+- \`status.criticalPassRate\` or \`overallStatus.criticalPassRate\` = same formula for Critical importance rows.
 
-**Overall scores**
-- \`overallScores.uiQualityScore\` = weighted average: accessibility 20%, performance 20%, codeQuality 20%, security 15%, html 10%, javascript 10%, processGovernance 5%.
-- All other \`overallScores.*\` = the corresponding domain score.
+**Overall scores** (prefer \`scores.*\`; legacy \`overallScores.*\` still supported)
+- \`scores.overall\` = weighted average: accessibility 20%, performance 20%, codeQuality 20%, security 15%, html 10%, javascript 10%, processGovernance 5% (align pillar keys with \`scores.htmlImplementation\`, \`scores.cssImplementation\`, \`scores.javascriptImplementation\`, etc.).
+- \`overallScores.uiQualityScore\` may mirror \`scores.overall\` for backward compatibility.
+- Other \`scores.*\` pillar keys = corresponding domain scores (0–100).
 
 **Trend snapshot** — set to current computed values (no prior run available):
-- Copy current \`overallScores\` and \`summary.totalIssues / criticalIssues\` values.
+- Prefer \`trend.*\` (e.g. \`trend.totalIssues\`, \`trend.criticalIssues\`, \`trend.overallScore\`) or copy legacy \`trendSnapshot.*\` / \`overallScores\` as needed.
 
 **Top issues** — up to 10
 - Select failed ("No") rows sorted by: Importance (Critical first → High → Medium) then Mandatory (Yes before No).
-- Fill \`topIssues.1\` through \`topIssues.10\` with: auditType (Code Audit / Browser Audit), severity (Importance value), mandatory, group, subGroup, description (Checklist Item text, truncated to 200 chars), evidence (Evidence column value).
+- Fill \`topIssues.1\` through \`topIssues.10\` with: auditType (Code Audit / Browser Audit), severity (Importance value), mandatory, group, subGroup, description (Checklist Item text, truncated to 200 chars), evidence (Evidence column value; first comma-separated path is shown in Location). Optional: \`id\` or \`code\` (issue id, e.g. DEV-SEMANTIC-DIV), \`line\` (source line; Location shows “Line {n}”), \`phase\` (category badge, e.g. Development / Accessibility).
 - Set \`topIssues.count\` = actual number of top issues written (max 10).
 
 **Components requiring attention** — up to 5
@@ -260,18 +373,60 @@ Count "No" rows matching the relevant Group + Sub-Group + checklist item keyword
 ### Step 4 — Write metrics
 6. \`write-metrics\` with the full computed key-value object — writes all values to the metrics CSV at once.
 
-### Step 5 — Cleanup
-7. Call \`cleanup-workspace\` — removes any auto-generated JSON, MD, and Python files from the workspace, keeping only CSVs.
+### Step 5 — Show audit dashboard
+7. Immediately call **\`show-audit-dashboard\`** with:
+   - \`metrics\`: the **same** flat key-value object you passed to \`write-metrics\` (all EDS-style keys).
+   - \`projectName\`: from \`metadata.projectName\` in that object, or the user’s project name from Step 0.
+   - \`locale\`: only if the user requested a specific dashboard language.
+   This opens the Product Audit Dashboard MCP App (\`ui://ui-audit/audit-dashboard.html\`). Ensure the host **opens or focuses** \`_meta.ui.resourceUri\` from the tool response so the user sees the live dashboard.
 
-### Step 6 — Report
-8. Print a concise summary table: RAG rating, uiQualityScore, domain scores, criticalFailed count, mandatoryFailed count, and the path to the generated metrics file.
+### Step 6 — Cleanup
+8. Call \`cleanup-workspace\` — removes any auto-generated JSON, MD, and Python files from the workspace, keeping only CSVs.
+
+### Step 7 — Report
+9. Print a concise summary table: RAG rating, uiQualityScore, domain scores, criticalFailed count, mandatoryFailed count, and the path to the generated metrics file.
 
 ## Rules
 - Use ONLY \`read-full-checklist\` to read audit data — do NOT call \`read-checklist-row\` one row at a time.
 - Leave a metric value as empty string ("") if it cannot be derived from the audit data — do NOT guess or fabricate values.
+- **Always** call \`show-audit-dashboard\` after a successful \`write-metrics\` (before \`cleanup-workspace\`) so the dashboard displays the metrics you just generated.
 - Never stop mid-generation.`,
       },
     }],
+  })
+);
+
+server.registerPrompt(
+  'show-audit-dashboard',
+  {
+    description:
+      'Open the Product Audit Dashboard MCP App (interactive UI). Invokes the show-audit-dashboard tool so the host can render ui://ui-audit/audit-dashboard.html.',
+  },
+  () => ({
+    messages: [
+      {
+        role: 'user',
+        content: {
+          type: 'text',
+          text: `Open the **Product Audit Dashboard** in the MCP App UI.
+
+## What to do
+1. Call the MCP tool **\`show-audit-dashboard\`** now.
+2. Use **no arguments** (or an empty object \`{}\`) to load the built-in sample metrics from the server defaults.
+3. If the user asked for a specific project or data, pass a matching payload:
+   - \`projectName\`, \`locale\`
+   - \`metrics\`: flat key-value object (EDS-style keys such as \`metadata.projectName\`, \`summary.*\`, \`overallScores.*\`, \`overallStatus.*\`)
+   - optional \`domains\`, \`auditBanner\`, \`checklistSummaryLine\`, \`totalComplianceValue\`, \`overviewCenterPercent\`, \`checklistSummaryMetrics\`, \`passRates\`
+
+## After the tool returns
+- The tool response includes MCP App metadata (\`_meta.ui.resourceUri\`) pointing at \`ui://ui-audit/audit-dashboard.html\` (with \`?data=...\` when the JSON is small enough).
+- Ensure the host **opens or focuses** that MCP App / UI resource so the user sees the dashboard.
+- Summarize in one short line what is shown (project name, RAG if present, checklist totals if present).
+
+Do not ask follow-up questions unless the user’s request was ambiguous about which metrics to show.`,
+        },
+      },
+    ],
   })
 );
 
@@ -708,6 +863,169 @@ Copy current values: \`trend.totalIssues\` = overall.failed, \`trend.criticalIss
 );
 
 // ── Tools ──
+
+const drilldownMetricSchema = z.object({
+  metric: z.string().describe('Row label in the Metric column.'),
+  compliance: z.string().describe('Compliance status text, e.g. Yes, No, Partial.'),
+  score: z.union([z.number(), z.string()]).describe('Numeric score 0–100; color: red if under 40, amber 40–89, green 90+.'),
+});
+
+const auditDomainRowSchema = z.object({
+  title: z.string(),
+  subtitle: z.string().optional(),
+  value: z.union([z.string(), z.number()]),
+  passed: z
+    .union([z.number(), z.string()])
+    .optional()
+    .describe('Passed checklist count for this domain (pair with total); shown as passed/total with a progress bar.'),
+  total: z
+    .union([z.number(), z.string()])
+    .optional()
+    .describe('Total checklist items for this domain; progress bar uses passed/total. If omitted with passed, defaults are derived from the score value.'),
+  domainKey: z
+    .string()
+    .optional()
+    .describe('Stable id for drill-down metrics (slug, e.g. ui-quality). Defaults from title if omitted.'),
+  metrics: z
+    .array(drilldownMetricSchema)
+    .optional()
+    .describe('Optional metric rows for the domain drill-down table (Metric, Compliance, Score).'),
+  iconBg: z.string().optional(),
+  iconSvg: z.string().optional(),
+});
+
+const auditBannerInputSchema = z.object({
+  titlePrefix: z.string().optional().describe('Title prefix before the em dash (default: UI Audit).'),
+  repoUrl: z.string().optional().describe('Repository URL or clone string; monospace line under the title.'),
+  appUrl: z.string().optional().describe('Deployed app URL; rendered as a link.'),
+  commitId: z.string().optional().describe('Commit id or hash; shown shortened in the Commit · Generated line.'),
+  auditTimestamp: z.string().optional().describe('ISO or display timestamp after "Generated".'),
+  ragRating: z
+    .string()
+    .optional()
+    .describe('RAG pill: Red, Amber, or Green (case-insensitive).'),
+});
+
+const checklistSummaryMetricsInputSchema = z.object({
+  totalChecks: z.union([z.number(), z.string()]).optional(),
+  passed: z.union([z.number(), z.string()]).optional(),
+  failed: z.union([z.number(), z.string()]).optional(),
+  notApplicable: z.union([z.number(), z.string()]).optional(),
+  criticalFailed: z.union([z.number(), z.string()]).optional(),
+  highFailed: z.union([z.number(), z.string()]).optional(),
+  mediumFailed: z.union([z.number(), z.string()]).optional(),
+  mandatoryFailed: z.union([z.number(), z.string()]).optional(),
+});
+
+const passRatesInputSchema = z.object({
+  mandatoryPassRate: z.union([z.number(), z.string()]).optional(),
+  criticalPassRate: z.union([z.number(), z.string()]).optional(),
+});
+
+registerAppTool(
+  server,
+  'display-audit-dashboard',
+  {
+    title: 'Audit dashboard',
+    description:
+      'Opens the Audit MCP App: metadata header, RAG pill, Overall Compliance + donut from scores.* / overallScores, summary mini-donuts (browser / code / manual audit), and category cards from flat metrics keys (prefix = category). Default sample is src/default-audit-metrics.json when metrics is omitted. Override with metrics, optional domains[], locale, etc.',
+    inputSchema: {
+      projectName: z
+        .string()
+        .optional()
+        .describe('Project or product name shown at the top of the overview and drill-down views.'),
+      checklistSummaryLine: z
+        .string()
+        .optional()
+        .describe('Line under the section title, e.g. number of checklist items audited.'),
+      totalComplianceValue: z
+        .union([z.number(), z.string()])
+        .optional()
+        .describe('Aggregate compliance figure shown beside the label (default: 81).'),
+      overviewCenterPercent: z
+        .number()
+        .optional()
+        .describe('Default donut center percentage before segment hover (default: average of domain scores).'),
+      locale: z
+        .string()
+        .optional()
+        .describe('Dashboard UI language (e.g. "en", "es"). Labels and default drill-down copy follow this locale.'),
+      domains: z
+        .array(auditDomainRowSchema)
+        .optional()
+        .describe(
+          'Audit domain rows: title, subtitle, score value; optional passed/total checklist counts (shown as passed/total with a bar); optional domainKey and metrics for drill-down.'
+        ),
+      auditBanner: auditBannerInputSchema
+        .optional()
+        .describe('Banner meta: repoUrl, appUrl, commitId, auditTimestamp, ragRating, optional titlePrefix.'),
+      checklistSummaryMetrics: checklistSummaryMetricsInputSchema
+        .optional()
+        .describe('Counts for the Checklist summary insight card (total, passed, failed, N/A, severity/mandatory failed).'),
+      passRates: passRatesInputSchema
+        .optional()
+        .describe('Mandatory and critical pass rate percentages for the Pass rates card.'),
+      metrics: z
+        .record(z.string(), z.union([z.string(), z.number()]))
+        .optional()
+        .describe(
+          'Flat EDS-style keys merged into banner and insight cards when structured fields are omitted, e.g. metadata.*, overallStatus.*, summary.*, and overallScores.uiQualityScore (plus other overallScores.*) to populate domain rows when domains[] is omitted.'
+        ),
+    },
+    _meta: { ui: { resourceUri: PRODUCT_AUDIT_DASHBOARD_URI } },
+  },
+  async (args) => {
+    const fallbackProjectName = 'Example Project Audit Report';
+    const metrics =
+      args?.metrics !== undefined
+        ? Object.keys(args.metrics).length
+          ? args.metrics
+          : null
+        : defaultAuditMetrics;
+    const projectName =
+      args?.projectName ??
+      (metrics && metrics['metadata.projectName'] != null && String(metrics['metadata.projectName']).trim() !== ''
+        ? String(metrics['metadata.projectName']).trim()
+        : fallbackProjectName);
+    const payload = {
+      projectName,
+      ...(args?.checklistSummaryLine != null && args.checklistSummaryLine !== ''
+        ? { checklistSummaryLine: args.checklistSummaryLine }
+        : {}),
+      ...(args?.totalComplianceValue !== undefined ? { totalComplianceValue: args.totalComplianceValue } : {}),
+      ...(args?.overviewCenterPercent !== undefined ? { overviewCenterPercent: args.overviewCenterPercent } : {}),
+      ...(args?.domains?.length ? { domains: args.domains } : {}),
+      ...(args?.auditBanner && Object.keys(args.auditBanner).length ? { auditBanner: args.auditBanner } : {}),
+      ...(args?.checklistSummaryMetrics && Object.keys(args.checklistSummaryMetrics).length
+        ? { checklistSummaryMetrics: args.checklistSummaryMetrics }
+        : {}),
+      ...(args?.passRates && Object.keys(args.passRates).length ? { passRates: args.passRates } : {}),
+      ...(args?.locale != null && args.locale !== '' ? { locale: args.locale } : {}),
+      ...(metrics ? { metrics } : {}),
+    };
+    const dataJson = JSON.stringify(payload);
+    const dataEnc = encodeURIComponent(dataJson);
+    const resourceWithData =
+      dataJson.length < 6000
+        ? `${PRODUCT_AUDIT_DASHBOARD_URI}?data=${dataEnc}`
+        : PRODUCT_AUDIT_DASHBOARD_URI;
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Audit dashboard: ${payload.projectName}${payload.metrics?.['overallStatus.ragRating'] != null ? `; RAG ${payload.metrics['overallStatus.ragRating']}` : ''}${payload.metrics?.['summary.totalChecks'] != null ? `; ${payload.metrics['summary.totalChecks']} checks` : ''}. Open the MCP App resource for the full view.`,
+        },
+      ],
+      structuredContent: {
+        productAuditDashboard: payload,
+      },
+      _meta: {
+        ui: { resourceUri: resourceWithData },
+      },
+    };
+  }
+);
 
 server.registerTool(
   'set-audit-workspace',

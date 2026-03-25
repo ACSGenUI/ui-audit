@@ -1,0 +1,12 @@
+@media (prefers-reduced-motion: reduce) {
+  .donut-seg.donut-seg--animate-in {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .row-progress-fill,
+  .score-bar-fill {
+    transition-duration: 0.01ms !important;
+  }
+}

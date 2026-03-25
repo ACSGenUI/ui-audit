@@ -1,0 +1,149 @@
+/* Mini donut breakdown cards (atomic chart). */
+.pc-mini-donut-card {
+  background: var(--insight-card-bg);
+  border: 1px solid var(--border-row);
+  border-radius: 12px;
+  padding: 16px 14px 14px;
+}
+
+.pc-mini-donut-card__title {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 12px;
+  letter-spacing: -0.02em;
+}
+
+.pc-mini-donut-wrap {
+  position: relative;
+  width: min(100%, 9.25rem);
+  max-width: 150px;
+  aspect-ratio: 1;
+  height: auto;
+  margin: 0 auto 14px;
+}
+
+.pc-mini-donut-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.pc-mini-donut-svg .donut-seg {
+  stroke: var(--insight-card-bg);
+  stroke-width: 1.35;
+}
+
+.pc-mini-donut-svg .donut-slice--track {
+  fill: var(--pc-mini-donut-empty);
+  stroke: none;
+  pointer-events: none;
+}
+
+/* Full rings built as two semicircles: avoid stroke gaps; fade only (transform scale hides arcs in some SVG hosts). */
+@keyframes pc-mini-donut-ring-half-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.pc-mini-donut-svg .donut-slice--ring-half.donut-seg.donut-seg--animate-in {
+  stroke: none;
+  transform: none;
+  animation-name: pc-mini-donut-ring-half-enter;
+  animation-duration: 0.48s;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  animation-fill-mode: both;
+  animation-delay: var(--donut-enter-delay, 0ms);
+}
+
+.pc-mini-donut-svg .donut-slice--empty {
+  fill: var(--pc-mini-donut-empty);
+}
+
+.pc-mini-donut-svg .donut-slice--passed {
+  fill: var(--pc-mini-donut-passed);
+}
+
+.pc-mini-donut-svg .donut-slice--failed {
+  fill: var(--pc-mini-donut-failed);
+}
+
+.pc-mini-donut-svg .donut-slice--other {
+  fill: var(--pc-mini-donut-slice-3);
+}
+
+.pc-mini-donut-svg .donut-slice--slice {
+  fill: var(--pc-mini-donut-slice-1);
+}
+
+.pc-mini-donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.pc-mini-donut-pct {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.pc-mini-donut-hint {
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-top: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.pc-mini-donut-legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(76px, 1fr));
+  gap: 12px 10px;
+}
+
+.pc-mini-donut-legend__label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.pc-mini-donut-legend__pill-track {
+  height: 6px;
+  border-radius: 999px;
+  margin: 6px 0 5px;
+  background: var(--score-bar-track, #e2e8f0);
+  overflow: hidden;
+}
+
+.pc-mini-donut-legend__pill-fill {
+  height: 100%;
+  min-width: 0;
+  max-width: 100%;
+  border-radius: 999px;
+  transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.pc-mini-donut-legend__pct {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pc-mini-donut-legend__empty {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  text-align: center;
+  grid-column: 1 / -1;
+}

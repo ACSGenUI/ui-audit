@@ -1,0 +1,309 @@
+/* Configurable horizontal bar chart + legend (scores and similar). */
+.pc-scores-bar-chart {
+  width: 100%;
+  margin-top: 2px;
+}
+
+/* Two columns: chart (fluid) + legend rail. */
+.pc-scores-bar-chart__main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(12rem, min(36%, 20rem));
+  /* Breathing room between chart and legend; legend rows stay one line (see legend-* rules). */
+  column-gap: clamp(1.25rem, 3.5vw, 1.875rem);
+  row-gap: 1rem;
+  align-items: start;
+  min-width: 0;
+}
+
+.pc-scores-bar-chart__main > .pc-scores-bar-chart__chart:only-child {
+  grid-column: 1 / -1;
+}
+
+/* Legend hidden: one fluid column, full width chart. */
+.pc-scores-bar-chart__main.pc-scores-bar-chart__main--chart-only {
+  grid-template-columns: minmax(0, 1fr);
+  column-gap: 0;
+}
+
+.pc-scores-bar-chart__chart {
+  min-width: 0;
+  width: 100%;
+}
+
+.pc-scores-bar-chart__x-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  margin-bottom: 8px;
+  min-height: 22px;
+}
+
+.pc-scores-bar-chart__x-row-pad {
+  flex: 0 0 28px;
+  width: 28px;
+}
+
+.pc-scores-bar-chart__x-labels {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  min-height: 20px;
+}
+
+.pc-scores-bar-chart__x-tick-label {
+  position: absolute;
+  bottom: 0;
+  transform: translateX(-50%);
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: var(--text-muted, #64748b);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pc-scores-bar-chart__body {
+  display: flex;
+  flex-direction: row;
+  min-width: 0;
+}
+
+.pc-scores-bar-chart__plot-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.pc-scores-bar-chart__grid {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.pc-scores-bar-chart__grid-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed var(--border-table, #e2e8f0);
+  transform: translateX(-0.5px);
+}
+
+.pc-scores-bar-chart__rows {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pc-scores-bar-chart__row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+}
+
+.pc-scores-bar-chart__y-index {
+  flex: 0 0 28px;
+  width: 28px;
+  text-align: center;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-muted, #64748b);
+  font-variant-numeric: tabular-nums;
+}
+
+.pc-scores-bar-chart__track-outer {
+  flex: 1;
+  min-width: 0;
+}
+
+.pc-scores-bar-chart__track-outer--hoverable {
+  position: relative;
+}
+
+.pc-scores-bar-chart__track {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-height: 30px;
+  gap: 8px;
+}
+
+.pc-scores-bar-chart__bar {
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 28px;
+  max-width: 100%;
+  border-radius: 0 10px 10px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  box-sizing: border-box;
+  transition:
+    width 0.45s ease,
+    filter 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.pc-scores-bar-chart--hover-values .pc-scores-bar-chart__row:hover .pc-scores-bar-chart__bar {
+  filter: brightness(1.07);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, #fff 28%, transparent),
+    0 2px 10px color-mix(in srgb, var(--text, #0f172a) 12%, transparent);
+}
+
+.pc-scores-bar-chart__hover-tip {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 4;
+  padding: 3px 8px;
+  border-radius: 8px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  white-space: nowrap;
+  color: var(--text, #1e293b);
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-table, #e2e8f0);
+  box-shadow: var(--tooltip-shadow, 0 4px 14px rgba(15, 23, 42, 0.12));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+}
+
+.pc-scores-bar-chart__hover-tip--flush-end {
+  left: auto;
+  right: 0;
+}
+
+.pc-scores-bar-chart--hover-values .pc-scores-bar-chart__row:hover .pc-scores-bar-chart__hover-tip {
+  opacity: 1;
+}
+
+.pc-scores-bar-chart__bar-label--inside {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.pc-scores-bar-chart__bar-label--outside {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text, #1e293b);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.pc-scores-bar-chart__legend {
+  min-width: 0;
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(var(--pc-scores-legend-cols, 1), minmax(0, 1fr));
+  row-gap: 4px;
+  column-gap: 0.5rem;
+  align-content: start;
+  pointer-events: none;
+  padding: 6px 8px 6px 10px;
+  margin: 0;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--border-table, #e2e8f0) 85%, transparent);
+  background: color-mix(in srgb, var(--border-table, #e2e8f0) 14%, transparent);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--text, #0f172a) 4%, transparent);
+}
+
+:root[data-theme="dark"] .pc-scores-bar-chart__legend {
+  border-color: color-mix(in srgb, var(--border-table, #334155) 90%, transparent);
+  background: color-mix(in srgb, var(--border-table, #334155) 22%, transparent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.pc-scores-bar-chart__legend-item {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 2px 0;
+}
+
+.pc-scores-bar-chart__legend-dot {
+  flex-shrink: 0;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--text, #0f172a) 8%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #fff 35%, transparent);
+}
+
+/* One line per item: label + percent (no wrap; long labels ellipsize). */
+.pc-scores-bar-chart__legend-text {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  gap: 0.35rem;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  flex: 1 1 auto;
+}
+
+.pc-scores-bar-chart__legend-name {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text, #1e293b);
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.pc-scores-bar-chart__legend-pct {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-muted, #64748b);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+@media (max-width: 560px) {
+  .pc-scores-bar-chart__main {
+    grid-template-columns: 1fr;
+    row-gap: 0.75rem;
+  }
+
+  .pc-scores-bar-chart__legend {
+    padding: 6px 8px;
+    margin: 0;
+  }
+}
+
+/* Rows need pointer events for hover tips; card click still bubbles from chart. */
+.metric-category-card--scores .pc-scores-bar-chart:not(.pc-scores-bar-chart--hover-values) {
+  pointer-events: none;
+}
