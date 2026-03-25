@@ -39,203 +39,78 @@
         </svg>
       </span>
     </button>
+
     <div class="dashboard-views">
-    <div id="view-overview" class="view-pane">
-    <div class="audit-banner" id="audit-banner" aria-label="Audit context">
-      <div class="audit-banner__main">
-        <h1 class="audit-banner__title" id="dash-audit-title">UI Audit</h1>
-        <div class="audit-banner__meta" id="dash-audit-meta" hidden></div>
-      </div>
-      <div class="audit-banner__aside">
-        <div class="audit-banner__status-tags">
-          <div class="audit-banner__golive" id="dash-golive-wrap" hidden>
-            <span class="audit-rag" id="dash-golive-badge" role="status"></span>
+      <div id="view-overview" class="view-pane">
+        <div class="audit-banner" id="audit-banner" aria-label="Audit context">
+          <div class="audit-banner__main">
+            <h1 class="audit-banner__title" id="dash-audit-title">UI Audit</h1>
+            <div class="audit-banner__meta" id="dash-audit-meta" hidden></div>
           </div>
-          <div class="audit-banner__rag" id="dash-rag-wrap" hidden>
-            <span class="audit-rag" id="dash-rag-badge" role="status"></span>
+          <div class="audit-banner__aside">
+            <div class="audit-banner__status-tags">
+              <div class="audit-banner__golive" id="dash-golive-wrap" hidden>
+                <span class="audit-rag" id="dash-golive-badge" role="status"></span>
+              </div>
+              <div class="audit-banner__rag" id="dash-rag-wrap" hidden>
+                <span class="audit-rag" id="dash-rag-badge" role="status"></span>
+              </div>
+            </div>
+            <div id="dash-pdf-download-root" class="audit-banner__pdf-root"></div>
           </div>
         </div>
-        <div id="dash-pdf-download-root" class="audit-banner__pdf-root"></div>
-      </div>
-    </div>
 
-    <header class="header">
-      <h2 class="section-heading" id="dash-section-title" data-i18n="defaults.sectionTitle">Overall Compliance</h2>
-      <p class="subtitle" id="dash-checklist-summary" data-i18n="defaults.checklistSummary">1,240 Total Checklist</p>
-    </header>
+        <header class="header">
+          <h2 class="section-heading" id="dash-section-title" data-i18n="defaults.sectionTitle">Overall Compliance</h2>
+          <p class="subtitle" id="dash-checklist-summary" data-i18n="defaults.checklistSummary">1,240 Total Checklist</p>
+        </header>
 
-    <section class="summary">
-      <div class="summary-left">
-        <div class="big" id="dash-total-compliance">81</div>
-        <div class="label" data-i18n="defaults.totalComplianceLabel">Total compliance</div>
-      </div>
-      <div class="donut-wrap" role="img" data-i18n-aria="donut.ariaLabel" aria-label="Compliance breakdown by domain">
-        <svg class="donut-svg" id="donut-svg" viewBox="0 0 100 100" aria-hidden="true"></svg>
-        <div class="donut-tooltip" id="donut-tooltip" role="tooltip"></div>
-        <div class="donut-center">
-          <span class="pct" id="dash-overview-pct">81%</span>
-          <span class="center-label" id="dash-center-label" data-i18n="donut.overall">Overall</span>
-        </div>
-      </div>
-    </section>
+        <section class="summary">
+          <div class="summary-left">
+            <div class="big" id="dash-total-compliance">81</div>
+            <div class="label" data-i18n="defaults.totalComplianceLabel">Total compliance</div>
+          </div>
+          <div class="donut-wrap" role="img" data-i18n-aria="donut.ariaLabel" aria-label="Compliance breakdown by domain">
+            <svg class="donut-svg" id="donut-svg" viewBox="0 0 100 100" aria-hidden="true"></svg>
+            <div class="donut-tooltip" id="donut-tooltip" role="tooltip"></div>
+            <div class="donut-center">
+              <span class="pct" id="dash-overview-pct">81%</span>
+              <span class="center-label" id="dash-center-label" data-i18n="donut.overall">Overall</span>
+            </div>
+          </div>
+        </section>
 
-    <section
-      class="metric-categories"
-      id="metric-categories-root"
-      data-i18n-aria="metrics.categoriesAria"
-      aria-label="Metrics by category"
-    ></section>
+        <section
+          class="metric-categories"
+          id="metric-categories-root"
+          data-i18n-aria="metrics.categoriesAria"
+          aria-label="Metrics by category"
+        ></section>
 
-    <div class="rows rows--interactive" id="dash-domains" role="list">
-      <div class="row" data-key="ui-quality" data-passed="39" data-total="50" role="listitem" tabindex="0" aria-label="UI Quality, open details">
-        <div class="icon-box" style="background: var(--icon-row-1)">
-          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 9v12" /></svg>
-        </div>
-        <div class="row-body">
-          <div class="row-head">
-            <div class="row-titles">
-              <div class="row-title">UI Quality</div>
-              <div class="row-sub">Visual design, consistency</div>
-            </div>
-            <div class="row-value">78</div>
-          </div>
-          <div class="row-progress">
-            <div class="row-progress-meta">
-              <span class="row-passed-total">39/50</span>
-              <span class="row-progress-hint">passed / total</span>
-            </div>
-            <div class="row-progress-bar"><div class="row-progress-fill score-tier-amber"></div></div>
-          </div>
-        </div>
+        <!-- Legacy domain drill rows: populated from payload.domains when flat metrics are absent; hidden when using JSON metrics. -->
+        <div class="rows rows--interactive" id="dash-domains" role="list" hidden></div>
       </div>
-      <div class="row" data-key="accessibility" data-passed="41" data-total="50" role="listitem" tabindex="0" aria-label="Accessibility, open details">
-        <div class="icon-box" style="background: var(--icon-row-2)">
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="7" r="3" /><path d="M6 20v-2a4 4 0 014-4h4a4 4 0 014 4v2M12 11v4" /></svg>
-        </div>
-        <div class="row-body">
-          <div class="row-head">
-            <div class="row-titles">
-              <div class="row-title">Accessibility</div>
-              <div class="row-sub">WCAG, keyboard, assistive tech</div>
-            </div>
-            <div class="row-value">82</div>
-          </div>
-          <div class="row-progress">
-            <div class="row-progress-meta">
-              <span class="row-passed-total">41/50</span>
-              <span class="row-progress-hint">passed / total</span>
-            </div>
-            <div class="row-progress-bar"><div class="row-progress-fill score-tier-amber"></div></div>
-          </div>
-        </div>
-      </div>
-      <div class="row" data-key="performance" data-passed="36" data-total="50" role="listitem" tabindex="0" aria-label="Performance, open details">
-        <div class="icon-box" style="background: var(--icon-row-3)">
-          <svg viewBox="0 0 24 24"><path d="M13 2L3 14h8l-1 8 10-12h-8l1-8z" /></svg>
-        </div>
-        <div class="row-body">
-          <div class="row-head">
-            <div class="row-titles">
-              <div class="row-title">Performance</div>
-              <div class="row-sub">Load, runtime, assets</div>
-            </div>
-            <div class="row-value">71</div>
-          </div>
-          <div class="row-progress">
-            <div class="row-progress-meta">
-              <span class="row-passed-total">36/50</span>
-              <span class="row-progress-hint">passed / total</span>
-            </div>
-            <div class="row-progress-bar"><div class="row-progress-fill score-tier-amber"></div></div>
-          </div>
-        </div>
-      </div>
-      <div class="row" data-key="code-quality" data-passed="44" data-total="50" role="listitem" tabindex="0" aria-label="Code Quality, open details">
-        <div class="icon-box" style="background: var(--icon-row-4)">
-          <svg viewBox="0 0 24 24"><path d="M16 18l6-6-6-6M8 6L2 12l6 6" /></svg>
-        </div>
-        <div class="row-body">
-          <div class="row-head">
-            <div class="row-titles">
-              <div class="row-title">Code Quality</div>
-              <div class="row-sub">Structure, linting, patterns</div>
-            </div>
-            <div class="row-value">88</div>
-          </div>
-          <div class="row-progress">
-            <div class="row-progress-meta">
-              <span class="row-passed-total">44/50</span>
-              <span class="row-progress-hint">passed / total</span>
-            </div>
-            <div class="row-progress-bar"><div class="row-progress-fill score-tier-amber"></div></div>
-          </div>
-        </div>
-      </div>
-      <div class="row" data-key="ux-compliance" data-passed="38" data-total="50" role="listitem" tabindex="0" aria-label="UX Compliance, open details">
-        <div class="icon-box" style="background: var(--icon-row-5)">
-          <svg viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" /><rect x="9" y="3" width="6" height="4" rx="1" /><path d="M9 12l2 2 4-4" /></svg>
-        </div>
-        <div class="row-body">
-          <div class="row-head">
-            <div class="row-titles">
-              <div class="row-title">UX Compliance</div>
-              <div class="row-sub">Flows, heuristics, standards</div>
-            </div>
-            <div class="row-value">76</div>
-          </div>
-          <div class="row-progress">
-            <div class="row-progress-meta">
-              <span class="row-passed-total">38/50</span>
-              <span class="row-progress-hint">passed / total</span>
-            </div>
-            <div class="row-progress-bar"><div class="row-progress-fill score-tier-amber"></div></div>
-          </div>
-        </div>
-      </div>
-      <div class="row" data-key="security" data-passed="45" data-total="50" role="listitem" tabindex="0" aria-label="Security, open details">
-        <div class="icon-box" style="background: var(--icon-row-6)">
-          <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
-        </div>
-        <div class="row-body">
-          <div class="row-head">
-            <div class="row-titles">
-              <div class="row-title">Security</div>
-              <div class="row-sub">Headers, policies, data handling</div>
-            </div>
-            <div class="row-value">90</div>
-          </div>
-          <div class="row-progress">
-            <div class="row-progress-meta">
-              <span class="row-passed-total">45/50</span>
-              <span class="row-progress-hint">passed / total</span>
-            </div>
-            <div class="row-progress-bar"><div class="row-progress-fill score-tier-green"></div></div>
-          </div>
-        </div>
-      </div>
-    </div>
-    </div>
 
-    <div id="view-drilldown" class="view-pane is-hidden" aria-hidden="true">
-      <p class="drilldown-project-name" id="dash-drill-project-name">UI Audit</p>
-      <button type="button" class="back-nav" id="drill-back" data-i18n-aria="nav.backAria" aria-label="Back to overview">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
-        <span data-i18n="nav.back">Back</span>
-      </button>
-      <h3 class="drilldown-title" id="drill-title"></h3>
-      <div class="metrics-table-scroll">
-        <table class="metrics-table" id="drill-metrics-table">
-          <thead>
-            <tr>
-              <th scope="col" class="metrics-th metrics-th--metric" data-i18n="table.metric">Metric</th>
-              <th scope="col" class="metrics-th metrics-th--compliance" data-i18n="table.compliance">Compliance</th>
-              <th scope="col" class="metrics-th metrics-th--score" data-i18n="table.score">Score</th>
-            </tr>
-          </thead>
-          <tbody id="drill-tbody"></tbody>
-        </table>
+      <div id="view-drilldown" class="view-pane is-hidden" aria-hidden="true">
+        <p class="drilldown-project-name" id="dash-drill-project-name">UI Audit</p>
+        <button type="button" class="back-nav" id="drill-back" data-i18n-aria="nav.backAria" aria-label="Back to overview">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
+          <span data-i18n="nav.back">Back</span>
+        </button>
+        <h3 class="drilldown-title" id="drill-title"></h3>
+        <div class="metrics-table-scroll">
+          <table class="metrics-table" id="drill-metrics-table">
+            <thead>
+              <tr>
+                <th scope="col" class="metrics-th metrics-th--metric" data-i18n="table.metric">Metric</th>
+                <th scope="col" class="metrics-th metrics-th--compliance" data-i18n="table.compliance">Compliance</th>
+                <th scope="col" class="metrics-th metrics-th--score" data-i18n="table.score">Score</th>
+              </tr>
+            </thead>
+            <tbody id="drill-tbody"></tbody>
+          </table>
+        </div>
       </div>
-    </div>
     </div>
 
     <p class="dashboard-ai-note" data-i18n="footer.aiDisclaimer" role="note">
