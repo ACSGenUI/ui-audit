@@ -2,14 +2,14 @@
  * Audit dashboard application: loads payloads, parses metrics, builds view models, and delegates
  * rendering to ProgenCraft.views.metrics (framework → ProgenCraftDesignSystem layouts + charts).
  */
-import { ProgenCraftDesignSystem as DS } from '../progen-craft/design-system/progen-craft-design-system.js';
-import { ProgenCraft as PC } from '../progen-craft/framework/progen-craft-framework.js';
+import { ProgenCraftDesignSystem as DS } from '../../progen-craft/design-system/progen-craft-design-system.js';
+import { ProgenCraft as PC } from '../../progen-craft/framework/progen-craft-framework.js';
 import {
   buildMetricsCategoryViewModel,
   formatPercentLabel,
 } from './audit-dashboard-metrics-view.js';
 
-const THEME_STORAGE_KEY = "ui-audit-theme";
+export const THEME_STORAGE_KEY = "ui-audit-theme";
   var pdfExportControlMounted = false;
 
   function t(key, vars) {
@@ -37,11 +37,11 @@ const THEME_STORAGE_KEY = "ui-audit-theme";
         return rel;
       }
     }
-    return "../progen-craft/design-system/utils/html2pdf.bundle.min.js";
+    return "../../progen-craft/design-system/utils/html2pdf.bundle.min.js";
   }
 
   function getPdfFilenameBase() {
-    var p = globalThis.__PRODUCT_AUDIT_DASHBOARD__;
+    var p = globalThis.__UI_AUDIT_DASHBOARD__;
     if (p && p.metrics && p.metrics["metadata.projectName"] != null) {
       var mk = String(p.metrics["metadata.projectName"]).trim();
       if (mk) return mk;
@@ -62,11 +62,13 @@ const THEME_STORAGE_KEY = "ui-audit-theme";
     if (pdfExportControlMounted) return;
     var mount = document.getElementById("dash-pdf-download-root");
     if (!mount || !DS || !DS.widgets || typeof DS.widgets.createPdfDownloadControl !== "function") return;
+    var usePrintForPdf = globalThis.__AUDIT_USE_PRINT_FOR_PDF__ === true;
     DS.widgets.createPdfDownloadControl(mount, {
-      scriptUrl: resolveHtml2PdfScriptUrl(),
+      scriptUrl: usePrintForPdf ? "" : resolveHtml2PdfScriptUrl(),
       targetSelector: "#dashboard",
       getFilenameBase: getPdfFilenameBase,
       t: t,
+      printFallback: usePrintForPdf,
     });
     pdfExportControlMounted = true;
   }
@@ -169,6 +171,9 @@ const THEME_STORAGE_KEY = "ui-audit-theme";
         event.preventDefault();
         localStorage.removeItem(THEME_STORAGE_KEY);
         document.documentElement.removeAttribute("data-theme");
+        if (typeof globalThis.__AUDIT_AFTER_THEME_RESET__ === "function") {
+          globalThis.__AUDIT_AFTER_THEME_RESET__();
+        }
         updateThemeToggleUI();
         try {
           reinitDonutFromPayload();
@@ -1241,6 +1246,13 @@ const THEME_STORAGE_KEY = "ui-audit-theme";
       applyLegacyDashboard(auditPayload);
     }
   }
+
+  globalThis.__AUDIT_ON_HOST_THEME_SYNC__ = function () {
+    updateThemeToggleUI();
+    try {
+      reinitDonutFromPayload();
+    } catch (hostThemeDonutError) { /* ignore */ }
+  };
 
   try {
     var payload = getEffectivePayload();

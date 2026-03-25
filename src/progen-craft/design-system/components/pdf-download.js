@@ -9,6 +9,7 @@
  *   pdfOptions?: object,
  *   t?: (key: string, vars?: object) => string,
  *   onError?: (err: Error) => void,
+ *   printFallback?: boolean,
  * }} config
  * @returns {{ root: HTMLElement, destroy: () => void }}
  */
@@ -20,6 +21,7 @@ export function createPdfDownloadControl(container, config) {
   var targetSelector = config.targetSelector || '#dashboard';
   var bodyExportClass = config.bodyExportClass || 'pdf-export-mode';
   var mergePdfOptions = config.pdfOptions || {};
+  var printFallback = config.printFallback === true;
   var t =
     config.t ||
     function (k) {
@@ -118,6 +120,23 @@ export function createPdfDownloadControl(container, config) {
 
   btn.addEventListener('click', function () {
     if (wrap.getAttribute('aria-busy') === 'true') return;
+
+    if (printFallback) {
+      document.body.classList.add(bodyExportClass);
+      status.hidden = false;
+      status.textContent = t('pdf.printHint');
+      requestAnimationFrame(function () {
+        try {
+          window.print();
+        } catch (printErr) {
+          onError(printErr instanceof Error ? printErr : new Error(String(printErr)));
+        }
+        document.body.classList.remove(bodyExportClass);
+        status.textContent = '';
+        status.hidden = true;
+      });
+      return;
+    }
 
     wrap.setAttribute('aria-busy', 'true');
     btn.disabled = true;

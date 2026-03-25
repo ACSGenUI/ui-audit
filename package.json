@@ -7,14 +7,19 @@
     "ui-audit-mcp-server": "src/mcp-stdio.js"
   },
   "scripts": {
-    "start": "node src/mcp-stdio.js"
+    "start": "node src/mcp-stdio.js",
+    "build": "vite build --config src/app-ui/vite.config.js",
+    "prepublishOnly": "vite build --config src/app-ui/vite.config.js"
   },
   "dependencies": {
-    "esbuild": "^0.25.0",
     "@modelcontextprotocol/ext-apps": "^1.3.1",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "csv-parse": "^5.5.0",
     "csv-stringify": "^6.4.0",
     "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "vite": "^6.4.1",
+    "vite-plugin-singlefile": "^2.3.2"
   }
 }

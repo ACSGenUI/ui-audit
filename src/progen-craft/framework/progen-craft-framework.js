@@ -7,10 +7,10 @@ import { ProgenCraftDesignSystem as DS } from '../design-system/progen-craft-des
 
 function readPayload() {
   if (
-    typeof globalThis.__PRODUCT_AUDIT_DASHBOARD__ === "object" &&
-    globalThis.__PRODUCT_AUDIT_DASHBOARD__ !== null
+    typeof globalThis.__UI_AUDIT_DASHBOARD__ === "object" &&
+    globalThis.__UI_AUDIT_DASHBOARD__ !== null
   )
-    return globalThis.__PRODUCT_AUDIT_DASHBOARD__;
+    return globalThis.__UI_AUDIT_DASHBOARD__;
   try {
     var raw = new URLSearchParams(globalThis.location.search).get("data");
     if (raw) return JSON.parse(decodeURIComponent(raw));

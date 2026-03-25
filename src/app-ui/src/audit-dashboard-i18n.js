@@ -5,7 +5,7 @@ var DEFAULT_LOCALE = "en";
 
   var MESSAGES = {
     en: {
-      "page.title": "Product Audit — Example Project Report",
+      "page.title": "UI Audit — Example Project Report",
       "theme.toggleTitle": "Switch theme. Alt+click: use system setting",
       "theme.ariaLight": "Switch to light mode",
       "theme.ariaDark": "Switch to dark mode",
@@ -74,6 +74,7 @@ var DEFAULT_LOCALE = "en";
       "pdf.download": "Download PDF",
       "pdf.downloadAria": "Download audit report as PDF",
       "pdf.preparing": "Preparing PDF…",
+      "pdf.printHint": "Opening print dialog — choose Save as PDF if your browser offers it.",
       "pdf.error": "PDF export failed. Try again.",
       "footer.aiDisclaimer":
         "NOTE: This is an AI-driven experience, and while we strive for accuracy, AI may sometimes generate unexpected or imperfect responses.",
@@ -123,7 +124,7 @@ var DEFAULT_LOCALE = "en";
       "metrics.components.healthScore": "Health Score",
     },
     es: {
-      "page.title": "Auditoría de producto — Informe de ejemplo",
+      "page.title": "Auditoría UI — Informe de ejemplo",
       "theme.toggleTitle": "Cambiar tema. Alt+clic: usar el del sistema",
       "theme.ariaLight": "Cambiar a modo claro",
       "theme.ariaDark": "Cambiar a modo oscuro",
@@ -192,6 +193,7 @@ var DEFAULT_LOCALE = "en";
       "pdf.download": "Descargar PDF",
       "pdf.downloadAria": "Descargar informe de auditoría en PDF",
       "pdf.preparing": "Preparando PDF…",
+      "pdf.printHint": "Abriendo el cuadro de impresión — elija Guardar como PDF si el navegador lo ofrece.",
       "pdf.error": "Error al exportar PDF. Inténtelo de nuevo.",
       "footer.aiDisclaimer":
         "NOTA: Esta es una experiencia impulsada por IA y, aunque buscamos precisión, la IA a veces puede generar respuestas inesperadas o imperfectas.",

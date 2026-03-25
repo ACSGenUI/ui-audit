@@ -1,0 +1,16 @@
+/**
+ * Design-system + dashboard styles for the MCP single-file HTML build (Vite).
+ * Mirrors the fragment list previously inlined in mcp-stdio.js.
+ */
+@import '../../progen-craft/design-system/css/ds-tokens.css';
+@import '../../progen-craft/design-system/css/ds-primitives-row.css';
+@import '../../progen-craft/design-system/css/ds-layouts-metric-category.css';
+@import '../../progen-craft/design-system/css/ds-components-donut-seg.css';
+@import '../../progen-craft/design-system/css/ds-components-mini-donut.css';
+@import '../../progen-craft/design-system/css/ds-components-stacked-bar.css';
+@import '../../progen-craft/design-system/css/ds-components-score-tier.css';
+@import '../../progen-craft/design-system/css/ds-motion-preference.css';
+@import '../../progen-craft/design-system/css/ds-components-pdf-download.css';
+@import '../../progen-craft/design-system/css/ds-components-issues-table.css';
+@import '../../progen-craft/design-system/css/ds-components-scores-bar-chart.css';
+@import './audit-dashboard.css';

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title data-i18n="page.title">Product Audit — Example Project Report</title>
+  <title data-i18n="page.title">UI Audit — Example Project Report</title>
   <script>
     (function () {
       var k = "ui-audit-theme";
@@ -11,8 +11,6 @@
       if (v === "light" || v === "dark") document.documentElement.setAttribute("data-theme", v);
     })();
   </script>
-  <link rel="stylesheet" href="../progen-craft/design-system/progen-craft-design-system.css" />
-  <link rel="stylesheet" href="audit-dashboard.css" />
 </head>
 <body>
   <article
@@ -87,7 +85,6 @@
           aria-label="Metrics by category"
         ></section>
 
-        <!-- Legacy domain drill rows: populated from payload.domains when flat metrics are absent; hidden when using JSON metrics. -->
         <div class="rows rows--interactive" id="dash-domains" role="list" hidden></div>
       </div>
 
@@ -119,6 +116,6 @@
     </p>
   </article>
 
-  <script type="module" src="audit-dashboard-entry.js"></script>
+  <script type="module" src="./src/audit-dashboard-mcp-entry.js"></script>
 </body>
 </html>
