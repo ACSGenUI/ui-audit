@@ -78,8 +78,6 @@ export function appendIssuesTable(parent, config) {
         var td = document.createElement("td");
         if (col.key === "severity") {
           appendTopIssueSeverityCell(td, row.severity);
-        } else if (col.key === "id") {
-          appendTopIssueIdCell(td, row.id);
         } else if (col.key === "description") {
           appendTopIssueDescriptionCell(td, row.description, row.subGroup);
         } else if (col.key === "location") {
@@ -141,25 +139,25 @@ function appendTopIssueSeverityCell(td, raw) {
   glyph.setAttribute("aria-hidden", "true");
   if (tier === "high" || tier === "medium") {
     glyph.innerHTML =
-      '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+      '<svg viewBox="0 0 14 14" width="11" height="11" fill="none" xmlns="http://www.w3.org/2000/svg">' +
       '<path d="M7 2L12.5 11H1.5L7 2Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" fill="currentColor" fill-opacity="0.15"/>' +
       '<path d="M7 5.5V8M7 9.2h.01" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>' +
       "</svg>";
   } else if (tier === "low") {
     glyph.innerHTML =
-      '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+      '<svg viewBox="0 0 14 14" width="11" height="11" fill="none" xmlns="http://www.w3.org/2000/svg">' +
       '<circle cx="7" cy="7" r="6" stroke="currentColor" stroke-width="1.2" fill="currentColor" fill-opacity="0.12"/>' +
       '<circle cx="7" cy="7" r="1.35" fill="currentColor"/>' +
       "</svg>";
   } else if (tier === "critical") {
     glyph.innerHTML =
-      '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+      '<svg viewBox="0 0 14 14" width="11" height="11" fill="none" xmlns="http://www.w3.org/2000/svg">' +
       '<circle cx="7" cy="7" r="6" stroke="currentColor" stroke-width="1.2" fill="currentColor" fill-opacity="0.12"/>' +
       '<line x1="4" y1="7" x2="10" y2="7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>' +
       "</svg>";
   } else {
     glyph.innerHTML =
-      '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+      '<svg viewBox="0 0 14 14" width="11" height="11" fill="none" xmlns="http://www.w3.org/2000/svg">' +
       '<circle cx="7" cy="7" r="6" stroke="currentColor" stroke-width="1.2" fill="none" opacity="0.7"/>' +
       '<circle cx="7" cy="7" r="1.5" fill="currentColor"/>' +
       "</svg>";
@@ -172,15 +170,6 @@ function appendTopIssueSeverityCell(td, raw) {
   wrap.appendChild(glyph);
   wrap.appendChild(text);
   td.appendChild(wrap);
-}
-
-function appendTopIssueIdCell(td, raw) {
-  td.className = "pc-issues-td-id";
-  var s = raw != null ? String(raw).trim() : "";
-  var el = document.createElement("span");
-  el.className = "pc-issues-id";
-  el.textContent = s || "—";
-  td.appendChild(el);
 }
 
 function appendTopIssueDescriptionCell(td, body, sub) {
@@ -201,12 +190,6 @@ function appendTopIssueDescriptionCell(td, body, sub) {
   td.appendChild(wrap);
 }
 
-var TOP_ISSUES_FILE_ICON_SVG =
-  '<svg class="pc-issues-location-icon-svg" viewBox="0 0 32 36" width="22" height="25" fill="none" xmlns="http://www.w3.org/2000/svg">' +
-  '<path d="M6 3h16l9 9v21a2 2 0 01-2 2H6a2 2 0 01-2-2V5a2 2 0 012-2z" fill="var(--pc-issues-file-fill, #f1f5f9)" stroke="currentColor" stroke-width="1.15"/>' +
-  '<path d="M22 3v9h9" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round"/>' +
-  "</svg>";
-
 function appendTopIssueLocationCell(td, pathRaw, subline) {
   td.className = "pc-issues-td-location";
   var path = pathRaw != null ? String(pathRaw).trim() : "";
@@ -214,28 +197,20 @@ function appendTopIssueLocationCell(td, pathRaw, subline) {
     td.textContent = "—";
     return;
   }
-  var cell = document.createElement("div");
-  cell.className = "pc-issues-location-cell";
-  var iconWrap = document.createElement("span");
-  iconWrap.className = "pc-issues-location-icon";
-  iconWrap.setAttribute("aria-hidden", "true");
-  iconWrap.innerHTML = TOP_ISSUES_FILE_ICON_SVG;
-  var text = document.createElement("span");
-  text.className = "pc-issues-location-text";
+  var stack = document.createElement("div");
+  stack.className = "pc-issues-location-stack";
   var titleEl = document.createElement("span");
   titleEl.className = "pc-issues-location-path";
   titleEl.textContent = path;
-  text.appendChild(titleEl);
+  stack.appendChild(titleEl);
   var sub = subline != null ? String(subline).trim() : "";
   if (sub) {
     var subEl = document.createElement("span");
     subEl.className = "pc-issues-location-linehint";
     subEl.textContent = sub;
-    text.appendChild(subEl);
+    stack.appendChild(subEl);
   }
-  cell.appendChild(iconWrap);
-  cell.appendChild(text);
-  td.appendChild(cell);
+  td.appendChild(stack);
 }
 
 function appendTopIssueCategoryCell(td, raw) {

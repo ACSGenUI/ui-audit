@@ -299,7 +299,6 @@ export function buildMetricsCategoryViewModel(flat, ctx) {
         issuesTableVariant: "topIssues",
         columns: [
           { key: "severity", label: t("metrics.topIssues.severity") },
-          { key: "id", label: t("metrics.topIssues.id") },
           { key: "description", label: t("metrics.topIssues.description") },
           { key: "location", label: t("metrics.topIssues.location") },
           { key: "phase", label: t("metrics.topIssues.category") },

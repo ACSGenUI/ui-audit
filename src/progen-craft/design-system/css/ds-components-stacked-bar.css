@@ -20,10 +20,27 @@
 .pc-stacked-bar__label {
   position: absolute;
   top: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 0.6875rem;
   font-weight: 600;
   color: var(--text-muted);
   line-height: 1.3;
+}
+
+.pc-stacked-bar__label-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--text, #0f172a) 8%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #fff 35%, transparent);
+}
+
+.pc-stacked-bar__label-text {
+  min-width: 0;
 }
 
 .pc-stacked-bar__label--start {

@@ -38,8 +38,16 @@ export function appendStackedDistributionBar(parent, model, options) {
     lab.className =
       "pc-stacked-bar__label" +
       (idx === 0 ? " pc-stacked-bar__label--start" : " pc-stacked-bar__label--tick");
-    lab.textContent = seg.label;
     lab.style.left = cumulative + "%";
+    var dot = document.createElement("span");
+    dot.className = "pc-stacked-bar__label-dot";
+    dot.setAttribute("aria-hidden", "true");
+    dot.style.backgroundColor = seg.color || "var(--border-table)";
+    var labelText = document.createElement("span");
+    labelText.className = "pc-stacked-bar__label-text";
+    labelText.textContent = seg.label;
+    lab.appendChild(dot);
+    lab.appendChild(labelText);
     labelTrack.appendChild(lab);
     var segEl = document.createElement("div");
     segEl.className = "pc-stacked-bar__seg";
