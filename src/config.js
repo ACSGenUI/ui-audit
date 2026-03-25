@@ -10,9 +10,10 @@ const config = {
   lockTimeoutMs: parseInt(process.env.MCP_LOCK_TIMEOUT_MS || String(10 * 60 * 1000), 10),
   maxCommentLength: 2000,
   templates: {
-    'code-audit': 'EDS_Code_Audit_Checklist.csv',
-    'browser-audit': 'EDS_Browser_Audit_Checklist.csv',
-    'metrics': 'EDS_Metrics.csv',
+    'code-audit': 'Code_Audit_Checklist.csv',
+    'browser-audit': 'Browser_Audit_Checklist.csv',
+    'manual-audit': 'Manual_Checklist.csv',
+    'metrics': 'Metrics.csv',
   },
   allowedWriteColumns: ['Implemented? (Yes / No)', 'Comments', 'Evidence'],
   metricsValueColumn: 'value',
