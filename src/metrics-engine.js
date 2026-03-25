@@ -630,11 +630,11 @@ function computeTrend(overallScore, domainScores, codeRows, browserRows, manualR
   return {
     'trend.totalIssues': String(allRows.filter(isFailed).length),
     'trend.criticalIssues': String(allRows.filter((r) => isFailed(r) && (r.Importance || '').trim() === 'Critical').length),
-    'trend.overallCompliance': overallScore !== '' ? String(overallScore) : '',
-    'trend.accessibilityCompliance': domainScores.accessibility !== '' ? String(domainScores.accessibility) : '',
-    'trend.performanceCompliance': domainScores.performance !== '' ? String(domainScores.performance) : '',
-    'trend.securityCompliance': domainScores.security !== '' ? String(domainScores.security) : '',
-    'trend.developmentCompliance': domainScores.development !== '' ? String(domainScores.development) : '',
+    'trend.overallScore': overallScore !== '' ? String(overallScore) : '',
+    'trend.accessibilityScore': domainScores.accessibility !== '' ? String(domainScores.accessibility) : '',
+    'trend.performanceScore': domainScores.performance !== '' ? String(domainScores.performance) : '',
+    'trend.securityScore': domainScores.security !== '' ? String(domainScores.security) : '',
+    'trend.codeQualityScore': domainScores.development !== '' ? String(domainScores.development) : '',
   };
 }
 

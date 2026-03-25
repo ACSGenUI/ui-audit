@@ -255,17 +255,11 @@ export const THEME_STORAGE_KEY = "ui-audit-theme";
       .replace(/^-+|-+$/g, "");
   }
 
-  /** Injected or ?data= payload if any; otherwise sample metrics from AuditDashboardMetrics. */
+  /** Injected or ?data= payload if any; returns null when no data is available. */
   function getEffectivePayload() {
     var p = PC && PC.data && typeof PC.data.readPayload === "function" ? PC.data.readPayload() : null;
     if (p != null) return p;
-    var M = window.AuditDashboardMetrics;
-    if (!M || !M.DEFAULT_AUDIT_METRICS) return null;
-    var name = String(M.DEFAULT_AUDIT_METRICS["metadata.projectName"] || "").trim();
-    return {
-      metrics: M.DEFAULT_AUDIT_METRICS,
-      ...(name ? { projectName: name } : {}),
-    };
+    return null;
   }
 
   function runOverviewRowBarAnimations(root) {

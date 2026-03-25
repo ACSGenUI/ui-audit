@@ -8,7 +8,6 @@ import LockManager from './lock-manager.js';
 import CsvManager from './csv-manager.js';
 import LocalAuditTool from './local-audit-tool.js';
 import { validatePayload } from './validator.js';
-import { readFileSync } from 'fs';
 import { readFile, writeFile, copyFile, access, mkdir, readdir, unlink } from 'fs/promises';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
@@ -17,9 +16,6 @@ import { computeAllMetrics } from './metrics-engine.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const defaultAuditMetrics = JSON.parse(
-  readFileSync(resolve(__dirname, 'default-audit-metrics.json'), 'utf8')
-);
 const AUDIT_DASHBOARD_URI = 'ui://ui-audit/audit-dashboard.html';
 const HTML2PDF_VENDOR_URI = 'ui://ui-audit/vendor/html2pdf.bundle.min.js';
 const html2pdfVendorPath = resolve(__dirname, 'progen-craft', 'design-system', 'utils', 'html2pdf.bundle.min.js');
@@ -380,13 +376,24 @@ server.registerPrompt(
           type: 'text',
           text: `Open the **Audit Dashboard** in the MCP App UI.
 
+**Before doing anything else**, ask the user:
+
+> Path to filled Metrics CSV (leave empty to use .ui-audit/Metrics.csv):
+
+Wait for their response.
+
 ## What to do
-1. Call the MCP tool **\`show-audit-dashboard\`** now.
-2. Use **no arguments** (or an empty object \`{}\`) to load the built-in sample metrics from the server defaults.
-3. If the user asked for a specific project or data, pass a matching payload:
-   - \`projectName\`, \`locale\`
-   - \`metrics\`: flat key-value object (EDS-style keys such as \`metadata.projectName\`, \`summary.*\`, \`overallScores.*\`, \`overallStatus.*\`)
-   - optional \`domains\`, \`auditBanner\`, \`checklistSummaryLine\`, \`totalComplianceValue\`, \`overviewCenterPercent\`, \`checklistSummaryMetrics\`, \`passRates\`
+
+### Step 1 — Load metrics
+- If the user provided a path, read that CSV file using \`read-full-checklist\` or by reading the file directly. Parse the CSV (columns: \`key\`, \`value\`) into a flat key-value object.
+- If the user left it empty, read the default metrics file from the \`.ui-audit/\` workspace directory (\`Metrics.csv\`). Parse the same way.
+- If the file is not found or empty, fall back to calling \`show-audit-dashboard\` with no arguments to load built-in sample metrics.
+
+### Step 2 — Open dashboard
+1. Call the MCP tool **\`show-audit-dashboard\`** with:
+   - \`metrics\`: the flat key-value object parsed from the CSV
+   - \`projectName\`: from \`metadata.projectName\` in the metrics object (if present)
+   - optional \`locale\`, \`domains\`, \`auditBanner\`, \`checklistSummaryLine\`, \`totalComplianceValue\`, \`overviewCenterPercent\`, \`checklistSummaryMetrics\`, \`passRates\`
 
 ## After the tool returns
 - The tool response includes MCP App metadata (\`_meta.ui.resourceUri\`) pointing at \`ui://ui-audit/audit-dashboard.html\` (with \`?data=...\` when the JSON is small enough).
@@ -540,7 +547,7 @@ registerAppTool(
   {
     title: 'Audit dashboard',
     description:
-      'Opens the Audit MCP App: metadata header, RAG pill, Overall Compliance + donut from scores.* / overallScores, summary mini-donuts (browser / code / manual audit), and category cards from flat metrics keys (prefix = category). Default sample is src/default-audit-metrics.json when metrics is omitted. Override with metrics, optional domains[], locale, etc.',
+      'Opens the Audit MCP App: metadata header, RAG pill, Overall Compliance + donut from scores.* / overallScores, summary mini-donuts (browser / code / manual audit), and category cards from flat metrics keys (prefix = category). When metrics is omitted, the dashboard shows an empty state. Pass metrics from compute-metrics or a filled Metrics CSV.',
     inputSchema: {
       projectName: z
         .string()
@@ -587,13 +594,11 @@ registerAppTool(
     _meta: { ui: { resourceUri: AUDIT_DASHBOARD_URI } },
   },
   async (args) => {
-    const fallbackProjectName = 'Example Project Audit Report';
+    const fallbackProjectName = 'Audit Report';
     const metrics =
-      args?.metrics !== undefined
-        ? Object.keys(args.metrics).length
-          ? args.metrics
-          : null
-        : defaultAuditMetrics;
+      args?.metrics !== undefined && args.metrics && Object.keys(args.metrics).length
+        ? args.metrics
+        : null;
     const projectName =
       args?.projectName ??
       (metrics && metrics['metadata.projectName'] != null && String(metrics['metadata.projectName']).trim() !== ''
