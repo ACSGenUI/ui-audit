@@ -440,19 +440,27 @@ server.registerPrompt(
           type: 'text',
           text: `Open the **Audit Dashboard** in the MCP App UI.
 
+**Before doing anything else**, ask the user:
+
+> Path to Metrics JSON file (leave blank to use \`.ui-audit/Metrics.min.json\`):
+
+Wait for their response. Then proceed with the workflow below.
+
+---
+
 ## What to do
-1. Call the MCP tool **\`display-audit-dashboard\`** now.
-2. Omit \`metricsJson\` or pass \`""\` to load the built-in sample metrics from the server (\`default-audit-metrics.json\`).
-3. To show real audit data, pass a single argument \`metricsJson\`: a **JSON string** (use \`JSON.stringify\`) of either:
-   - the flat metrics object (EDS-style keys: \`metadata.projectName\`, \`summary.*\`, \`overallScores.*\`, \`overallStatus.*\`, etc.), or
-   - a full dashboard payload object that includes a \`metrics\` property (optional \`projectName\`, \`domains\`, \`locale\`, etc.).
+1. Determine the metrics JSON file path:
+   - If the user provided a path, use that.
+   - If left blank, default to \`.ui-audit/Metrics.min.json\`.
+2. Read the JSON file contents using the file system (e.g. read the file at the resolved path).
+3. Call the MCP tool **\`display-audit-dashboard\`** with \`metricsJson\` set to the file contents (the raw JSON string from the file).
 
 ## After the tool returns
 - The tool response includes MCP App metadata (\`_meta.ui.resourceUri\`) pointing at \`ui://ui-audit/audit-dashboard.html\` (with \`?data=...\` when the JSON is small enough).
 - Ensure the host **opens or focuses** that MCP App / UI resource so the user sees the dashboard.
 - Summarize in one short line what is shown (project name, RAG if present, checklist totals if present).
 
-Do not ask follow-up questions unless the user's request was ambiguous about which metrics to show.`,
+Do not ask follow-up questions after showing the dashboard.`,
         },
       },
     ],
@@ -511,14 +519,19 @@ Do NOT pause, ask questions, or wait for user input at any point after receiving
 5. Extract the \`metrics\` object from the \`compute-metrics\` response.
 6. \`write-metrics\` with the \`metrics\` object — writes all values to the Metrics CSV.
 
-### Step 4 — Show audit dashboard
-7. Call \`display-audit-dashboard\` with \`metricsJson: JSON.stringify(metrics)\` where \`metrics\` is the flat key-value object from \`compute-metrics\`.
+### Step 4 — Generate metrics JSON
+7. Call \`csv-to-flat-json\` with:
+   - \`csvFilePath\`: the path to the Metrics CSV just written (e.g. \`.ui-audit/Metrics.csv\`)
+   - \`outputFilePath\`: the same directory but named \`Metrics.json\` (e.g. \`.ui-audit/Metrics.json\`)
+   This converts the key-value CSV into a flat JSON file for downstream consumption.
 
-### Step 5 — Cleanup
-8. \`cleanup-workspace\` — removes any auto-generated JSON, MD, and Python files, keeping only CSVs.
+### Step 5 — Generate minified metrics JSON
+8. Read the \`Metrics.json\` file just created, parse it, and re-serialize it as a single-line minified JSON string (no whitespace/indentation). Write this to \`Metrics.min.json\` in the same directory (e.g. \`.ui-audit/Metrics.min.json\`).
 
-### Step 6 — Report
-9. Print a concise summary table: RAG rating, go-live readiness, overall score, all 17 domain scores with their risk ratings, criticalFailed count, mandatoryFailed count, totalBlockingIssues, and the path to the generated metrics file.
+### Step 6 — Report and STOP
+9. Print a concise summary: confirm that Metrics.csv, Metrics.json, and Metrics.min.json have been generated, show their file paths, and print the overall score and RAG rating.
+
+**IMPORTANT: STOP here. Do NOT proceed to display the audit dashboard, do NOT call cleanup-workspace, and do NOT perform any further steps.**
 
 ## Rules
 - Do NOT manually compute metrics — \`compute-metrics\` handles all computation server-side.
@@ -865,14 +878,16 @@ server.registerTool(
 server.registerTool(
   'cleanup-workspace',
   {
-    description: 'Remove auto-generated JSON, MD, and Python files from the audit workspace, keeping only CSV files. Call this after an audit or metrics generation completes.',
+    description: 'Remove auto-generated JSON, MD, and Python files from the audit workspace, keeping only CSV files and Metrics.json. Call this after an audit or metrics generation completes.',
     inputSchema: {},
   },
   async () => {
+    const KEEP_FILES = new Set(['Metrics.json', 'Metrics.min.json']);
     let deleted = [];
     try {
       const files = await readdir(config.workspaceDir);
       for (const file of files) {
+        if (KEEP_FILES.has(file)) continue;
         if (file.endsWith('.json') || file.endsWith('.md') || file.endsWith('.py')) {
           await unlink(resolve(config.workspaceDir, file));
           deleted.push(file);
@@ -898,6 +913,72 @@ server.registerTool(
   async ({ command, cwd, timeoutMs }) => {
     const result = await localAuditTool.execute({ command, cwd, timeoutMs });
     return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+  }
+);
+
+server.registerTool(
+  'csv-to-flat-json',
+  {
+    description:
+      'Convert a two-column CSV (key,value) into a flat JSON object. ' +
+      'Accepts either a CSV file path or raw CSV string. ' +
+      'Keys are kept as-is (dot-notation preserved, not nested).',
+    inputSchema: {
+      csvFilePath: z
+        .string()
+        .optional()
+        .describe('Absolute path to a CSV file with key,value columns.'),
+      csvContent: z
+        .string()
+        .optional()
+        .describe('Raw CSV string with key,value columns (used when csvFilePath is not provided).'),
+      outputFilePath: z
+        .string()
+        .optional()
+        .describe('If provided, writes the resulting JSON to this file path.'),
+    },
+  },
+  async ({ csvFilePath, csvContent, outputFilePath }) => {
+    try {
+      if (!csvFilePath && !csvContent) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'Provide either csvFilePath or csvContent.' }) }],
+        };
+      }
+
+      let raw = csvContent;
+      if (csvFilePath) {
+        raw = await readFile(csvFilePath, 'utf-8');
+      }
+
+      const { parse: csvParse } = await import('csv-parse/sync');
+      const records = csvParse(raw, {
+        columns: true,
+        skip_empty_lines: true,
+        trim: true,
+      });
+
+      const json = {};
+      for (const row of records) {
+        const key = row.key ?? row.Key;
+        const value = row.value ?? row.Value;
+        if (key !== undefined) {
+          json[key] = value ?? '';
+        }
+      }
+
+      if (outputFilePath) {
+        await writeFile(outputFilePath, JSON.stringify(json, null, 2), 'utf-8');
+      }
+
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ ok: true, json, totalKeys: Object.keys(json).length }) }],
+      };
+    } catch (e) {
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ ok: false, error: e.message }) }],
+      };
+    }
   }
 );
 
