@@ -4,24 +4,7 @@
  * Host apps supply a declarative view model (layout + component bindings + resolved copy where needed).
  */
 import { ProgenCraftDesignSystem as DS } from '../design-system/progen-craft-design-system.js';
-
-/** Unwrap JSON values that were stringified multiple times (e.g. `JSON.stringify(JSON.stringify(obj))`). */
-function parseJsonLayers(value, maxDepth) {
-  var limit = maxDepth == null ? 12 : maxDepth;
-  var v = value;
-  var depth = 0;
-  while (depth < limit && typeof v === "string") {
-    var t = v.trim();
-    if (t === "") return null;
-    try {
-      v = JSON.parse(t);
-      depth += 1;
-    } catch (parseLayerError) {
-      return null;
-    }
-  }
-  return v;
-}
+import { parseJsonLayers } from '../../utils/parse-json-layers.js';
 
 function readPayload() {
   if (

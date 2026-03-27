@@ -15,6 +15,7 @@ import {
   applyHostStyleVariables,
 } from "@modelcontextprotocol/ext-apps";
 import { THEME_STORAGE_KEY } from "./audit-dashboard.js";
+import { parseJsonLayers } from "../../utils/parse-json-layers.js";
 
 const DASHBOARD_FALLBACK_PROJECT = "Example Project Audit Report";
 
@@ -24,23 +25,6 @@ function projectNameFromMetrics(metrics, fallback = DASHBOARD_FALLBACK_PROJECT) 
   if (name == null) return fallback;
   const t = String(name).trim();
   return t !== "" ? t : fallback;
-}
-
-/** Repeatedly JSON.parse while the value is a non-empty string (double-/triple-encoded JSON from hosts). */
-function parseJsonLayers(value, maxDepth = 12) {
-  let v = value;
-  let depth = 0;
-  while (depth < maxDepth && typeof v === "string") {
-    const t = v.trim();
-    if (t === "") return null;
-    try {
-      v = JSON.parse(t);
-      depth += 1;
-    } catch {
-      return null;
-    }
-  }
-  return v;
 }
 
 /**

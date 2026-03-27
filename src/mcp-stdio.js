@@ -17,6 +17,7 @@ import config, {
   resolveWorkspaceMetricsCsvPath,
 } from './config.js';
 import { computeAllMetrics } from './metrics-engine.js';
+import { parseJsonLayers } from './utils/parse-json-layers.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -39,23 +40,6 @@ async function readMcpDashboardHtml() {
     }
     throw err;
   }
-}
-
-/** Repeatedly JSON.parse while the value is a non-empty string (double-encoded JSON from clients). */
-function parseJsonLayers(value, maxDepth = 12) {
-  let v = value;
-  let depth = 0;
-  while (depth < maxDepth && typeof v === 'string') {
-    const t = v.trim();
-    if (t === '') return null;
-    try {
-      v = JSON.parse(t);
-      depth += 1;
-    } catch {
-      return null;
-    }
-  }
-  return v;
 }
 
 async function buildAuditDashboardContents(uri, variables) {
