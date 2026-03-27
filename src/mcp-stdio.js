@@ -38,15 +38,43 @@ async function readMcpDashboardHtml() {
   }
 }
 
+/** Repeatedly JSON.parse while the value is a non-empty string (double-encoded JSON from clients). */
+function parseJsonLayers(value, maxDepth = 12) {
+  let v = value;
+  let depth = 0;
+  while (depth < maxDepth && typeof v === 'string') {
+    const t = v.trim();
+    if (t === '') return null;
+    try {
+      v = JSON.parse(t);
+      depth += 1;
+    } catch {
+      return null;
+    }
+  }
+  return v;
+}
+
 async function buildAuditDashboardContents(uri, variables) {
   let html = await readMcpDashboardHtml();
   const raw = variables?.data ?? uri.searchParams.get('data');
   let tailScripts = '';
   if (raw) {
     try {
-      const parsed = JSON.parse(decodeURIComponent(raw));
-      const safe = JSON.stringify(parsed).replace(/</g, '\\u003c');
-      tailScripts = `<script>window.__UI_AUDIT_DASHBOARD__=${safe};</script>`;
+      let v = JSON.parse(decodeURIComponent(raw));
+      v = parseJsonLayers(v);
+      if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+        if (v.metrics != null && typeof v.metrics === 'string') {
+          const inner = parseJsonLayers(v.metrics);
+          if (inner !== null && typeof inner === 'object' && !Array.isArray(inner)) {
+            v = { ...v, metrics: inner };
+          } else {
+            throw new Error('invalid stringified metrics');
+          }
+        }
+        const safe = JSON.stringify(v).replace(/</g, '\\u003c');
+        tailScripts = `<script>window.__UI_AUDIT_DASHBOARD__=${safe};</script>`;
+      }
     } catch {
       /* ignore invalid data param */
     }
@@ -88,15 +116,19 @@ function resolveDashboardPayloadFromMetricsJson(metricsJson) {
     return { payload: defaultPayload, usedDefaultMetrics: true, jsonInvalid: false };
   }
 
-  let parsed;
-  try {
-    parsed = JSON.parse(trimmed);
-  } catch {
+  const parsedRoot = parseJsonLayers(trimmed);
+  if (parsedRoot === null || typeof parsedRoot !== 'object' || Array.isArray(parsedRoot)) {
     return { payload: defaultPayload, usedDefaultMetrics: true, jsonInvalid: true };
   }
 
-  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return { payload: defaultPayload, usedDefaultMetrics: true, jsonInvalid: true };
+  let parsed = parsedRoot;
+  if (parsed.metrics != null && typeof parsed.metrics === 'string') {
+    const inner = parseJsonLayers(parsed.metrics);
+    if (inner !== null && typeof inner === 'object' && !Array.isArray(inner)) {
+      parsed = { ...parsed, metrics: inner };
+    } else {
+      return { payload: defaultPayload, usedDefaultMetrics: true, jsonInvalid: true };
+    }
   }
 
   if (parsed.metrics != null && typeof parsed.metrics === 'object' && !Array.isArray(parsed.metrics)) {
@@ -119,6 +151,59 @@ function resolveDashboardPayloadFromMetricsJson(metricsJson) {
     },
     usedDefaultMetrics: false,
     jsonInvalid: false,
+  };
+}
+
+/**
+ * Read flat metrics from workspace Metrics.csv (key,value rows). Returns null if missing/unreadable/empty keys.
+ * @param {string} metricsCsvPath
+ * @returns {Promise<Record<string, string> | null>}
+ */
+async function tryLoadMetricsFromMetricsCsv(metricsCsvPath) {
+  try {
+    const content = await readFile(metricsCsvPath, 'utf-8');
+    const clean = content.replace(/^\uFEFF/, '');
+    const { parse: csvParse } = await import('csv-parse/sync');
+    const records = csvParse(clean, { columns: true, skip_empty_lines: true, bom: true });
+    const metrics = {};
+    for (const row of records) {
+      const key = row['key'];
+      if (key == null || String(key).trim() === '') continue;
+      const val = row['value'];
+      metrics[String(key).trim()] = val == null ? '' : String(val);
+    }
+    if (Object.keys(metrics).length === 0) return null;
+    return metrics;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Dashboard data source: workspace Metrics.csv first, then metricsJson, then default-audit-metrics.json.
+ * @param {string | undefined} metricsJson
+ * @returns {Promise<{ payload: object, usedDefaultMetrics: boolean, jsonInvalid: boolean, dataSource: 'csv' | 'json' | 'default' }>}
+ */
+async function resolveDashboardPayloadForDisplay(metricsJson) {
+  const csvPath = resolve(config.workspaceDir, config.templates['metrics']);
+  const fromCsv = await tryLoadMetricsFromMetricsCsv(csvPath);
+  if (fromCsv !== null) {
+    return {
+      payload: {
+        projectName: projectNameFromMetrics(fromCsv),
+        metrics: fromCsv,
+      },
+      usedDefaultMetrics: false,
+      jsonInvalid: false,
+      dataSource: 'csv',
+    };
+  }
+  const fromJson = resolveDashboardPayloadFromMetricsJson(metricsJson);
+  return {
+    payload: fromJson.payload,
+    usedDefaultMetrics: fromJson.usedDefaultMetrics,
+    jsonInvalid: fromJson.jsonInvalid,
+    dataSource: fromJson.usedDefaultMetrics ? 'default' : 'json',
   };
 }
 
@@ -539,30 +624,34 @@ registerAppTool(
   {
     title: 'Audit dashboard',
     description:
-      'Opens the Audit MCP App (ui://…/audit-dashboard.html). Optional argument: metricsJson — a JSON string of flat EDS-style metric key-values (same shape as write-metrics / compute-metrics output), or a full dashboard payload object that includes a `metrics` object. Omit or pass empty string to use the server default metrics (default-audit-metrics.json). Invalid JSON falls back to those defaults.',
+      'Opens the Audit MCP App (ui://…/audit-dashboard.html). Data source order: (1) If `.ui-audit/Metrics.csv` exists in the server workspace (current working directory) and parses successfully, its key/value rows drive the dashboard (metricsJson is ignored). (2) Else optional `metricsJson` — flat EDS-style metric key-values or a full dashboard payload with a `metrics` object (same shape as write-metrics / compute-metrics). (3) Else built-in sample metrics (default-audit-metrics.json). Invalid JSON in step 2 falls back to step 3.',
     inputSchema: {
       metricsJson: z
         .string()
         .optional()
         .describe(
-          'Optional JSON string: either (1) flat metrics object with keys like metadata.projectName, summary.*, overallScores.*, or (2) a dashboard payload including a `metrics` object (and optional projectName, domains, locale, etc.). Omit or "" for built-in sample metrics. Malformed JSON uses defaults.'
+          'Optional JSON string used only when `.ui-audit/Metrics.csv` is missing or unreadable: (1) flat metrics object, or (2) dashboard payload with a `metrics` object. Omit or "" for built-in sample metrics in that case. Malformed JSON uses defaults.'
         ),
     },
     _meta: { ui: { resourceUri: AUDIT_DASHBOARD_URI } },
   },
   async (args) => {
-    const { payload, usedDefaultMetrics, jsonInvalid } = resolveDashboardPayloadFromMetricsJson(args?.metricsJson);
+    const { payload, usedDefaultMetrics, jsonInvalid, dataSource } = await resolveDashboardPayloadForDisplay(
+      args?.metricsJson
+    );
     const dataJson = JSON.stringify(payload);
     const dataEnc = encodeURIComponent(dataJson);
     const resourceWithData =
       dataJson.length < 6000 ? `${AUDIT_DASHBOARD_URI}?data=${dataEnc}` : AUDIT_DASHBOARD_URI;
 
     const hint =
-      jsonInvalid
-        ? ' Invalid metricsJson — using default-audit-metrics.json.'
-        : usedDefaultMetrics
-          ? ' Using default sample metrics.'
-          : '';
+      dataSource === 'csv'
+        ? ' Loaded from .ui-audit/Metrics.csv (metricsJson ignored if present).'
+        : jsonInvalid
+          ? ' Invalid metricsJson — using default-audit-metrics.json.'
+          : usedDefaultMetrics
+            ? ' Using default sample metrics (no Metrics.csv; empty or omitted metricsJson).'
+            : '';
 
     return {
       content: [
