@@ -16,6 +16,9 @@ export function getProjectRootForWorkspace() {
 
 const projectDir = getProjectRootForWorkspace();
 
+/** Immutable sandbox root for MCP path checks (env UI_AUDIT_PROJECT_ROOT / cwd at process start). */
+export const trustedSandboxRoot = resolve(projectDir);
+
 const config = {
   workspaceDir: resolve(projectDir, '.ui-audit'),
   templatesDir: resolve(process.env.MCP_TEMPLATES || resolve(import.meta.dirname, '../templates')),
