@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'fs/promises';
 import { resolve } from 'path';
 import { parse } from 'csv-parse/sync';
 import { stringify } from 'csv-stringify/sync';
-import config from './config.js';
+import config, { getWorkspaceMetricsCsvPath } from './config.js';
 
 class CsvManager {
   constructor(lockManager) {
@@ -11,6 +11,7 @@ class CsvManager {
   }
 
   _templatePath(templateName) {
+    if (templateName === 'metrics') return getWorkspaceMetricsCsvPath();
     const filename = config.templates[templateName];
     if (!filename) return null;
     return resolve(config.workspaceDir, filename);

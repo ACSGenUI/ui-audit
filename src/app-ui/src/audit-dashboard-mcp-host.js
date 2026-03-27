@@ -4,7 +4,9 @@
  * until the user picks light/dark (see THEME_STORAGE_KEY). Only runs in the bundled MCP dashboard (iframe with a parent bridge).
  *
  * Tool args for `display-audit-dashboard` (`metricsJson`) are applied via `__AUDIT_APPLY_DASHBOARD_PAYLOAD__`
- * so the UI updates when the host sends `ui/notifications/tool-input` (same payload rules as mcp-stdio.js).
+ * on `ui/notifications/tool-input`. The server-resolved payload (including data from `.ui-audit/Metrics.csv`) is
+ * reapplied on `ui/notifications/tool-result` via `structuredContent.auditDashboard` so CSV-backed runs are not
+ * overwritten when `metricsJson` is empty.
  */
 import {
   App,
@@ -13,6 +15,7 @@ import {
   applyHostStyleVariables,
 } from "@modelcontextprotocol/ext-apps";
 import { THEME_STORAGE_KEY } from "./audit-dashboard.js";
+import { parseJsonLayers } from "../../parse-json-layers.js";
 
 const DASHBOARD_FALLBACK_PROJECT = "Example Project Audit Report";
 
@@ -46,13 +49,8 @@ function dashboardPayloadFromToolArguments(toolArgs) {
     return normalizeParsedMetricsPayload(raw, defaultPayload);
   }
 
-  const trimmed = String(raw).trim();
-  if (trimmed === "") return defaultPayload;
-
-  let parsed;
-  try {
-    parsed = JSON.parse(trimmed);
-  } catch {
+  const parsed = parseJsonLayers(String(raw));
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
     return defaultPayload;
   }
 
@@ -62,6 +60,15 @@ function dashboardPayloadFromToolArguments(toolArgs) {
 function normalizeParsedMetricsPayload(parsed, defaultPayload) {
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
     return defaultPayload;
+  }
+
+  if (parsed.metrics != null && typeof parsed.metrics === "string") {
+    const inner = parseJsonLayers(parsed.metrics);
+    if (inner !== null && typeof inner === "object" && !Array.isArray(inner)) {
+      parsed = { ...parsed, metrics: inner };
+    } else {
+      return defaultPayload;
+    }
   }
 
   if (parsed.metrics != null && typeof parsed.metrics === "object" && !Array.isArray(parsed.metrics)) {
@@ -118,6 +125,15 @@ async function connectMcpHostContext() {
     const payload = dashboardPayloadFromToolArguments(params.arguments);
     if (typeof globalThis.__AUDIT_APPLY_DASHBOARD_PAYLOAD__ === "function") {
       globalThis.__AUDIT_APPLY_DASHBOARD_PAYLOAD__(payload);
+    }
+  };
+
+  app.ontoolresult = (result) => {
+    const dashboard = result?.structuredContent?.auditDashboard;
+    if (dashboard != null && typeof dashboard === "object" && !Array.isArray(dashboard)) {
+      if (typeof globalThis.__AUDIT_APPLY_DASHBOARD_PAYLOAD__ === "function") {
+        globalThis.__AUDIT_APPLY_DASHBOARD_PAYLOAD__(dashboard);
+      }
     }
   };
 

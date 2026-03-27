@@ -12,8 +12,12 @@ import { readFileSync } from 'fs';
 import { readFile, writeFile, copyFile, access, mkdir, readdir, unlink } from 'fs/promises';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
-import config from './config.js';
+import config, {
+  getProjectRootForWorkspace,
+  resolveWorkspaceMetricsCsvPath,
+} from './config.js';
 import { computeAllMetrics } from './metrics-engine.js';
+import { parseJsonLayers } from './parse-json-layers.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -44,9 +48,20 @@ async function buildAuditDashboardContents(uri, variables) {
   let tailScripts = '';
   if (raw) {
     try {
-      const parsed = JSON.parse(decodeURIComponent(raw));
-      const safe = JSON.stringify(parsed).replace(/</g, '\\u003c');
-      tailScripts = `<script>window.__UI_AUDIT_DASHBOARD__=${safe};</script>`;
+      let v = JSON.parse(decodeURIComponent(raw));
+      v = parseJsonLayers(v);
+      if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+        if (v.metrics != null && typeof v.metrics === 'string') {
+          const inner = parseJsonLayers(v.metrics);
+          if (inner !== null && typeof inner === 'object' && !Array.isArray(inner)) {
+            v = { ...v, metrics: inner };
+          } else {
+            throw new Error('invalid stringified metrics');
+          }
+        }
+        const safe = JSON.stringify(v).replace(/</g, '\\u003c');
+        tailScripts = `<script>window.__UI_AUDIT_DASHBOARD__=${safe};</script>`;
+      }
     } catch {
       /* ignore invalid data param */
     }
@@ -88,15 +103,19 @@ function resolveDashboardPayloadFromMetricsJson(metricsJson) {
     return { payload: defaultPayload, usedDefaultMetrics: true, jsonInvalid: false };
   }
 
-  let parsed;
-  try {
-    parsed = JSON.parse(trimmed);
-  } catch {
+  const parsedRoot = parseJsonLayers(trimmed);
+  if (parsedRoot === null || typeof parsedRoot !== 'object' || Array.isArray(parsedRoot)) {
     return { payload: defaultPayload, usedDefaultMetrics: true, jsonInvalid: true };
   }
 
-  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return { payload: defaultPayload, usedDefaultMetrics: true, jsonInvalid: true };
+  let parsed = parsedRoot;
+  if (parsed.metrics != null && typeof parsed.metrics === 'string') {
+    const inner = parseJsonLayers(parsed.metrics);
+    if (inner !== null && typeof inner === 'object' && !Array.isArray(inner)) {
+      parsed = { ...parsed, metrics: inner };
+    } else {
+      return { payload: defaultPayload, usedDefaultMetrics: true, jsonInvalid: true };
+    }
   }
 
   if (parsed.metrics != null && typeof parsed.metrics === 'object' && !Array.isArray(parsed.metrics)) {
@@ -119,6 +138,62 @@ function resolveDashboardPayloadFromMetricsJson(metricsJson) {
     },
     usedDefaultMetrics: false,
     jsonInvalid: false,
+  };
+}
+
+/**
+ * Read flat metrics from workspace Metrics.csv (key,value rows). Returns null if missing/unreadable/empty keys.
+ * Pass `getWorkspaceMetricsCsvPath()` so reads match `write-metrics` and `CsvManager` metrics paths.
+ * @param {string} metricsCsvPath
+ * @returns {Promise<Record<string, string> | null>}
+ */
+async function tryLoadMetricsFromMetricsCsv(metricsCsvPath) {
+  try {
+    const content = await readFile(metricsCsvPath, 'utf-8');
+    const clean = content.replace(/^\uFEFF/, '');
+    const { parse: csvParse } = await import('csv-parse/sync');
+    const records = csvParse(clean, { columns: true, skip_empty_lines: true, bom: true });
+    const metrics = {};
+    for (const row of records) {
+      const key = row['key'];
+      if (key == null || String(key).trim() === '') continue;
+      const val = row['value'];
+      metrics[String(key).trim()] = val == null ? '' : String(val);
+    }
+    if (Object.keys(metrics).length === 0) return null;
+    return metrics;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Dashboard data source: workspace Metrics.csv first, then metricsJson, then default-audit-metrics.json.
+ * @param {string | undefined} metricsJson
+ * @param {{ workspacePath?: string, projectPath?: string } | undefined} metricsCsvOverrides - Same semantics as `write-metrics` / `compute-metrics` paths.
+ * @returns {Promise<{ payload: object, usedDefaultMetrics: boolean, jsonInvalid: boolean, dataSource: 'csv' | 'json' | 'default' }>}
+ */
+async function resolveDashboardPayloadForDisplay(metricsJson, metricsCsvOverrides) {
+  const fromCsv = await tryLoadMetricsFromMetricsCsv(
+    resolveWorkspaceMetricsCsvPath(metricsCsvOverrides)
+  );
+  if (fromCsv !== null) {
+    return {
+      payload: {
+        projectName: projectNameFromMetrics(fromCsv),
+        metrics: fromCsv,
+      },
+      usedDefaultMetrics: false,
+      jsonInvalid: false,
+      dataSource: 'csv',
+    };
+  }
+  const fromJson = resolveDashboardPayloadFromMetricsJson(metricsJson);
+  return {
+    payload: fromJson.payload,
+    usedDefaultMetrics: fromJson.usedDefaultMetrics,
+    jsonInvalid: fromJson.jsonInvalid,
+    dataSource: fromJson.usedDefaultMetrics ? 'default' : 'json',
   };
 }
 
@@ -294,139 +369,6 @@ The audit is only complete when \`get-checklist-status\` returns \`pending: 0\` 
 );
 
 server.registerPrompt(
-  'start-metrics-generation-v1',
-  {
-    description: '[Legacy] Generate a Metrics report from Code Audit and Browser Audit results only. Use start-metrics-generation for the full three-audit report.',
-  },
-  () => ({
-    messages: [{
-      role: 'user',
-      content: {
-        type: 'text',
-        text: `You are a UI audit agent preparing to generate a **Metrics Report** from completed audit results.
-
-**Before doing anything else**, ask the user exactly these questions (all at once):
-
-> 1. Project name:
-> 2. App URL (the URL audited in the Browser Audit, or leave blank):
-
-Wait for their response. Then proceed with the full workflow below without any further pauses or questions.
-
----
-
-## CRITICAL: Run to completion without stopping
-Complete the entire metrics generation in a single continuous run.
-Do NOT pause, ask questions, or wait for user input at any point after receiving metadata.
-
-## Workflow
-
-### Step 1 — Prepare workspace and auto-derive metadata
-1. \`set-audit-workspace\` with \`templateName: "metrics"\` — creates \`.ui-audit/\` and copies the metrics template.
-2. \`download-template\` with \`templateName: "metrics"\` — seeds a fresh metrics file.
-3. Auto-derive the remaining metadata fields using \`run-local-audit\`:
-   - \`metadata.commitId\` → run \`git rev-parse --short HEAD\`; use the stdout value. If git is unavailable, use "".
-   - \`metadata.repoUrl\` → run \`git remote get-url origin\`; use the stdout value. If no remote, use "".
-   - \`metadata.agentVersion\` → hardcoded: "1.0.0" (the MCP server version).
-   - \`metadata.auditTimestamp\` → current ISO 8601 timestamp (set at time of metrics generation).
-   - \`metadata.projectName\`, \`metadata.appUrl\` → from user answers in Step 0.
-
-### Step 2 — Load audit results
-4. \`read-full-checklist\` with \`templateName: "code-audit"\` — load all Code Audit rows.
-5. \`read-full-checklist\` with \`templateName: "browser-audit"\` — load all Browser Audit rows.
-
-### Step 3 — Compute metrics
-Analyse all rows from both audits and compute every metric value using the rules below.
-Use each row's \`Group\`, \`Sub-Group\`, \`Audit Type\`, \`Importance\`, \`Mandatory\`, \`Implemented? (Yes / No)\`, \`Comments\`, and \`Evidence\` columns.
-
-**Summary counts** (nested keys; legacy flat keys like \`summary.codeAuditTotal\` remain supported by the dashboard)
-- \`summary.browserAudit.total\`, \`summary.browserAudit.passed\`, \`summary.browserAudit.failed\`, \`summary.browserAudit.notApplicable\` — browser-audit checklist only.
-- \`summary.codeAudit.total\`, \`summary.codeAudit.passed\`, \`summary.codeAudit.failed\`, \`summary.codeAudit.notApplicable\` — code-audit checklist only.
-- \`summary.manualAudit.total\`, \`summary.manualAudit.passed\`, \`summary.manualAudit.failed\`, \`summary.manualAudit.notApplicable\` — manual-audit checklist only (if applicable).
-- \`summary.overall.total\` = sum of audit-type totals; \`summary.overall.passed / failed / notApplicable\` = combined across audits.
-- \`summary.overall.mandatoryFailed\` = No rows where \`Mandatory\` is "Yes"; \`summary.overall.criticalFailed / highFailed / mediumFailed\` = No rows by Importance.
-- Legacy flat keys still work: \`summary.totalChecks\`, \`summary.passed\`, \`summary.failed\`, \`summary.notApplicable\`, \`summary.mandatoryFailed\`, \`summary.criticalFailed\`, \`summary.highFailed\`, \`summary.mediumFailed\`.
-
-**Domain scores (0–100)**
-- Score for each domain = (Yes rows in that domain / total rows in that domain) × 100, rounded to 1 decimal. Omit rows with empty \`Implemented\`.
-- Domain groupings by checklist \`Group\` field:
-  - \`domains.html\` → Groups: "HTML Semantics & Structure", "HTML Forms & Inputs", "HTML Media & Data", "HTML Metadata & Validation" (both audits)
-  - \`domains.css\` → Groups: "CSS Architecture & Tokens", "Layout & Responsiveness", "Performance & Misc - CSS" (code audit)
-  - \`domains.javascript\` → Groups: "JavaScript Architecture & Loading", "JavaScript DOM & Performance Safety", "JavaScript State & Reliability", "JavaScript Code Structure & Hygiene" (both audits)
-  - \`domains.accessibility\` → Phase: "Accessibility" (both audits)
-  - \`domains.performance\` → Phase: "Performance" (browser audit) + Group "Performance & Misc - CSS" (code audit)
-  - \`domains.security\` → Phase: "Security" (both audits)
-  - \`domains.codeQuality\` → Groups: "Code Quality - Hygiene & Safety", "Code Quality - Structure & Readability", "Code Quality - Errors & Reliability", "Code Quality - Architecture & Dependencies" (code audit)
-  - \`domains.processGovernance\` → Phase: "Process & Governance" (code audit)
-- Sub-domain scores (e.g. \`domains.html.semanticsScore\`) = same formula filtered to that Sub-Group.
-
-**Domain-specific failure counts**
-Count "No" rows matching the relevant Group + Sub-Group + checklist item keyword:
-- HTML: headingHierarchyViolations → Sub-Group "Semantics" items about heading hierarchy; multipleH1 → "Single h1" item; missingLabels → "All inputs have associated labels"; placeholderAsLabel → "Placeholder not used as label"; missingErrorAssociation → "Error messages programmatically associated"; missingAccessibleNames → "Accessible names for interactive elements"; missingAltText → Images Sub-Group failures; duplicateIds → "No duplicate IDs"; invalidNesting → "No invalid HTML nesting"; validationErrors → "HTML validates without errors"; ariaMisuse → ARIA Sub-Group failures; brokenLinks → "No broken links"; missingTitle → "Page <title> exists"; missingMetaViewport → "Meta viewport configured correctly"; missingCanonical → "Canonical URL" item; missingCharset → "Charset meta tag" item; missingLangAttribute → "Language attribute (lang)" item; missingMetaDescription → "Meta description tag present" item (browser audit).
-- CSS: hardcodedColors → "No hardcoded hex/rgb color values"; hardcodedSpacing → "No hardcoded pixel spacing"; hardcodedFonts → "Font-family declarations" item; inlineStylesCount → "Avoid inline styles"; duplicateRules → "No duplicated CSS rules"; unusedSelectors → "No unused CSS selectors"; designTokensFailed → count of No rows in Sub-Group "Design Tokens" (CSS variables for colors/spacing/typography + no hardcoded values items); responsiveBreakpointIssues → Responsive Sub-Group failures; layoutShiftRisks → Layout Stability (browser audit Stability sub-group); zIndexIssues → "Avoid z-index escalation"; compatibilityIssues → Compatibility Sub-Group failures; qualityIssues → Quality Sub-Group failures.
-- JavaScript: blockingScripts → "No blocking scripts in head"; scriptsWithoutAsyncDefer → "Use async or defer"; thirdPartyScriptsNotLazyLoaded → "Third-party scripts lazy loaded"; unusedModulesLoaded → "No JS files loaded on pages where their exports are unused"; memoryLeakRisks → "Avoid memory leaks"; forcedSyncLayouts → "Avoid forced synchronous layouts"; timerLeaks → "All setTimeout/setInterval calls have corresponding clear calls"; pollingWithoutObserver → "setInterval for DOM/state checks flagged"; stateMutationInLoops → "No setState/dispatch/state-mutation calls inside loops"; unusedPackages → "No unused npm/yarn packages"; globalVariables → "No global variables"; deeplyNestedCallbacks → "Avoid deeply nested callbacks".
-- Accessibility: wcagViolations — split by Importance of failed WCAG Core rows (Critical/High/Medium); lighthouseScore → extract a numeric score from the Comments/Evidence field of the "Lighthouse accessibility score >= 90" checklist item if the auditor recorded it, else ""; skipLinksPresent → 1 or 0 for "Skip links implemented" (browser audit); focusStylesMissing → 0 or 1 for "Visible focus styles present" (1 = failed); hoverWithoutFocusRules → ":hover rules have corresponding :focus" item; visuallyHiddenPatternIssues → "Visually-hidden patterns" item; dynamicContentAnnounced → "Announce dynamic content changes"; modalDialogIssues → "Modal/dialog elements" item; videoCaptionsMissing → "<video> elements have <track kind=captions>"; audioTranscriptMissing → "<audio> elements have adjacent transcript"; focusTrapMisuse → "No focus-trap calls outside of modal".
-- Performance: all \`*Passed\` fields = 1 (Yes) or 0 (No) for the single checklist item: lcpPassed → "LCP < 2.5s" item; clsPassed → "CLS < 0.1" item; inpPassed → "INP < 200ms" item; ttfbPassed → "TTFB < 800ms" item; fcpPassed → "FCP < 1.8s" item; tbtPassed → "No JavaScript long tasks" item; totalPageWeightPassed → "Total page weight within performance budget"; compressionEnabled → "Text resources served with gzip or Brotli"; http2Enabled → "Resources served over HTTP/2 or HTTP/3"; unusedJsCssPercent → extract a numeric value from the Comments field of the Coverage checklist item if the auditor recorded one (e.g. "45% unused"), else ""; imageOptimizationIssues → count of No rows for image optimization items; duplicateNetworkRequests → "No duplicate network requests"; renderBlockingResources → "No render-blocking resources"; webfontFormatOptimal → "Webfont files use WOFF2"; longTasksOnMainThread → "No JavaScript long tasks" item; lighthouseScore → extract a numeric score from the Comments/Evidence field of the "Lighthouse performance score >= 90" checklist item if the auditor recorded it (e.g. "Score: 87"), else ""; seoAndBestPracticesPassed → 1 or 0 for the single combined item "Lighthouse SEO score >= 90 and Best Practices score >= 90".
-- Security: evalUsage → "No eval() or Function(string)"; documentWriteUsage → "No document.write"; unsafeInnerHtml → "No unsanitized user input in innerHTML"; inlineScriptsWithoutNonce → "No inline scripts without nonce/hash"; missingCsp → "Content-Security-Policy response header present" (browser); missingSecurityHeaders → "X-Content-Type-Options" item; mixedContent → "No mixed content warnings"; tlsCertificateIssues → "TLS certificate valid"; websocketUnencrypted → "WebSocket connections use wss://"; cspViolations → "No resources loaded from origins not listed in CSP"; jsErrors → "Zero JavaScript errors" browser item; hardcodedSecrets → "No hardcoded API keys"; credentialsInUrls → "No credentials or tokens in URLs"; sensitiveDataInComments → "No sensitive data in client-side comments"; insecureStorage → "No insecure storage usage"; piiInStorage → "No PII stored in cookies"; cookieFlagsIssues → "Cookies used for session management have SameSite" item; vulnerableDependencies → "No known vulnerable dependencies"; formActionHttps → "Form actions use HTTPS only"; sensitiveDataInAttributes → "No sensitive data exposed in client-visible IDs or data attributes".
-- Code Quality: lintErrors → "Zero lint errors"; unusedVariables → "No unused variables"; unusedFunctions → "No unused functions"; unusedImports → "No unused imports"; deadCodePaths → "No dead code paths"; deadCodeFiles → "No dead code files"; commentedOutCode → "No commented-out production code"; implicitGlobals → "No implicit globals"; duplicateConstants → "No duplicated constants"; namingConventionViolations → "Variable names" and "Function names" items; complexConditions → "No nested ternary" and "No if/else chains" items; deeplyNestedFunctions → "Functions with if-block wrapping" item; oversizedFilesOrFunctions → "Average file size under 500 LOC" item; duplicateCodePercent → "Duplicate code percentage" item (extract % from Comments if available); circularDependencies → "Avoid circular dependencies"; staleTodoFixme → "No stale TODO/FIXME" items; hardcodedEnvValues → "No hardcoded environment values"; missingReadme → "README present"; inconsistentErrorHandling → "Consistent error handling strategy"; magicNumbers → "Avoid magic numbers"; rawStringThrows → "no raw string throws" (from error message item).
-- Process & Governance: gitInitialized → "Git repository initialized" item; gitignorePresent → ".gitignore file present" item; lockfileCommitted → "Package lock file committed" item; preCommitHooksConfigured → "Pre-commit hooks configured" item; nodeVersionSpecified → "Node.js version specified" item; mockDataInProduction → "Hardcoded mock data or example values" item.
-
-**Risk index** — per domain:
-- "High" if domain score < 60, "Medium" if 60–79, "Low" if ≥ 80. Use "" if no rows exist for that domain.
-
-**Overall status**
-- \`status.ragRating\` (preferred) or \`overallStatus.ragRating\` = "Red" if overall score < 60, "Amber" if 60–79, "Green" if ≥ 80 (use \`scores.overall\` or \`overallScores.uiQualityScore\`).
-- \`status.mandatoryPassRate\` or \`overallStatus.mandatoryPassRate\` = (mandatory rows that passed / total mandatory rows) × 100, rounded to 1 decimal.
-- \`status.criticalPassRate\` or \`overallStatus.criticalPassRate\` = same formula for Critical importance rows.
-
-**Overall scores** (prefer \`scores.*\`; legacy \`overallScores.*\` still supported)
-- \`scores.overall\` = weighted average: accessibility 20%, performance 20%, codeQuality 20%, security 15%, html 10%, javascript 10%, processGovernance 5% (align pillar keys with \`scores.htmlImplementation\`, \`scores.cssImplementation\`, \`scores.javascriptImplementation\`, etc.).
-- \`overallScores.uiQualityScore\` may mirror \`scores.overall\` for backward compatibility.
-- Other \`scores.*\` pillar keys = corresponding domain scores (0–100).
-
-**Trend snapshot** — set to current computed values (no prior run available):
-- Prefer \`trend.*\` (e.g. \`trend.totalIssues\`, \`trend.criticalIssues\`, \`trend.overallScore\`) or copy legacy \`trendSnapshot.*\` / \`overallScores\` as needed.
-
-**Top issues** — up to 10
-- Select failed ("No") rows sorted by: Importance (Critical first → High → Medium) then Mandatory (Yes before No).
-- Fill \`topIssues.1\` through \`topIssues.10\` with: auditType (Code Audit / Browser Audit), severity (Importance value), mandatory, group, subGroup, description (Checklist Item text, truncated to 200 chars), evidence (Evidence column value; first comma-separated path is shown in Location). Optional: \`id\` or \`code\` (issue id, e.g. DEV-SEMANTIC-DIV), \`line\` (source line; Location shows “Line {n}”), \`phase\` (category badge, e.g. Development / Accessibility).
-- Set \`topIssues.count\` = actual number of top issues written (max 10).
-
-**Components requiring attention** — up to 5
-- Parse the Evidence column of all failed rows. Extract file/component paths (workspace-relative paths or filenames).
-- Group by path, count failed checks and critical failures per path.
-- Compute healthScore = 100 − (failedChecks / totalChecksForThatComponent × 100), rounded.
-- Sort by failedChecks descending. Write top 5 into \`componentsRequiringAttention.1–5\`.
-- Set \`componentsRequiringAttention.count\` = actual number written.
-- Leave empty string ("") if no evidence paths are present.
-
-**Metadata**
-- Set \`metadata.auditTimestamp\` = current ISO 8601 timestamp.
-- Set all other metadata fields from the user's answers in Step 1.
-
-### Step 4 — Write metrics
-6. \`write-metrics\` with the full computed key-value object — writes all values to the metrics CSV at once.
-
-### Step 5 — Show audit dashboard
-7. Immediately call **\`display-audit-dashboard\`** with \`metricsJson\` set to \`JSON.stringify(...)\` of the **same** flat key-value object you passed to \`write-metrics\` (all EDS-style keys). Omit \`metricsJson\` only if you intend the sample dashboard.
-   This opens the Audit Dashboard MCP App (\`ui://ui-audit/audit-dashboard.html\`). Ensure the host **opens or focuses** \`_meta.ui.resourceUri\` from the tool response so the user sees the live dashboard.
-
-### Step 6 — Cleanup
-8. Call \`cleanup-workspace\` — removes any auto-generated JSON, MD, and Python files from the workspace, keeping only CSVs.
-
-### Step 7 — Report
-9. Print a concise summary table: RAG rating, uiQualityScore, domain scores, criticalFailed count, mandatoryFailed count, and the path to the generated metrics file.
-
-## Rules
-- Use ONLY \`read-full-checklist\` to read audit data — do NOT call \`read-checklist-row\` one row at a time.
-- Leave a metric value as empty string ("") if it cannot be derived from the audit data — do NOT guess or fabricate values.
-- **Always** call \`display-audit-dashboard\` with \`metricsJson: JSON.stringify(metrics)\` after a successful \`write-metrics\` (before \`cleanup-workspace\`) so the dashboard displays the metrics you just generated.
-- Never stop mid-generation.`,
-      },
-    }],
-  })
-);
-
-server.registerPrompt(
   'show-audit-dashboard',
   {
     description:
@@ -552,30 +494,47 @@ registerAppTool(
   {
     title: 'Audit dashboard',
     description:
-      'Opens the Audit MCP App (ui://…/audit-dashboard.html). Optional argument: metricsJson — a JSON string of flat EDS-style metric key-values (same shape as write-metrics / compute-metrics output), or a full dashboard payload object that includes a `metrics` object. Omit or pass empty string to use the server default metrics (default-audit-metrics.json). Invalid JSON falls back to those defaults.',
+      'Opens the Audit MCP App (ui://…/audit-dashboard.html). Data source order: (1) Metrics.csv from the resolved audit path (see `projectPath` / `workspacePath`; else `UI_AUDIT_PROJECT_ROOT` env + `.ui-audit/`, else `set-audit-workspace` target, else `process.cwd()` + `.ui-audit/`). If that file parses successfully, its rows drive the dashboard (metricsJson ignored). (2) Else `metricsJson`. (3) Else built-in sample metrics. Invalid JSON in step 2 falls back to step 3.',
     inputSchema: {
+      projectPath: z
+        .string()
+        .optional()
+        .describe(
+          'Absolute path to the project repo root containing `.ui-audit/`. Use when the MCP process cwd is not the repo (e.g. Cursor). Metrics.csv is read from `<projectPath>/.ui-audit/Metrics.csv`. Omit if `UI_AUDIT_PROJECT_ROOT` or `set-audit-workspace` already points at this project.'
+        ),
+      workspacePath: z
+        .string()
+        .optional()
+        .describe(
+          'Absolute path to the audit folder that **contains** Metrics.csv (usually `<repo>/.ui-audit`). Overrides `projectPath` when both are set. Same meaning as `compute-metrics` workspacePath.'
+        ),
       metricsJson: z
         .string()
         .optional()
         .describe(
-          'Optional JSON string: either (1) flat metrics object with keys like metadata.projectName, summary.*, overallScores.*, or (2) a dashboard payload including a `metrics` object (and optional projectName, domains, locale, etc.). Omit or "" for built-in sample metrics. Malformed JSON uses defaults.'
+          'Optional JSON string used only when Metrics.csv is missing or unreadable at the resolved path: (1) flat metrics object, or (2) dashboard payload with a `metrics` object. Omit or "" for built-in sample metrics in that case. Malformed JSON uses defaults.'
         ),
     },
     _meta: { ui: { resourceUri: AUDIT_DASHBOARD_URI } },
   },
   async (args) => {
-    const { payload, usedDefaultMetrics, jsonInvalid } = resolveDashboardPayloadFromMetricsJson(args?.metricsJson);
+    const { payload, usedDefaultMetrics, jsonInvalid, dataSource } = await resolveDashboardPayloadForDisplay(
+      args?.metricsJson,
+      { workspacePath: args?.workspacePath, projectPath: args?.projectPath }
+    );
     const dataJson = JSON.stringify(payload);
     const dataEnc = encodeURIComponent(dataJson);
     const resourceWithData =
       dataJson.length < 6000 ? `${AUDIT_DASHBOARD_URI}?data=${dataEnc}` : AUDIT_DASHBOARD_URI;
 
     const hint =
-      jsonInvalid
-        ? ' Invalid metricsJson — using default-audit-metrics.json.'
-        : usedDefaultMetrics
-          ? ' Using default sample metrics.'
-          : '';
+      dataSource === 'csv'
+        ? ' Loaded from .ui-audit/Metrics.csv (metricsJson ignored if present).'
+        : jsonInvalid
+          ? ' Invalid metricsJson — using default-audit-metrics.json.'
+          : usedDefaultMetrics
+            ? ' Using default sample metrics (no Metrics.csv; empty or omitted metricsJson).'
+            : '';
 
     return {
       content: [
@@ -600,11 +559,16 @@ server.registerTool(
     description: 'Set the project being audited. Creates a .ui-audit/ folder, copies the relevant checklist, and redirects all read/write to it. Call this FIRST.',
     inputSchema: {
       templateName: z.enum(['code-audit', 'browser-audit', 'manual-audit', 'metrics']).describe('Which audit is being run: "code-audit", "browser-audit", "manual-audit", or "metrics".'),
-      projectPath: z.string().optional().describe('Absolute path to the project repo. Omit to use the current working directory.'),
+      projectPath: z
+        .string()
+        .optional()
+        .describe(
+          'Absolute path to the project repo. Omit to use `UI_AUDIT_PROJECT_ROOT` / `MCP_UI_AUDIT_PROJECT_ROOT` if set, otherwise `process.cwd()`.'
+        ),
     },
   },
   async ({ templateName, projectPath }) => {
-    const base = projectPath || process.cwd();
+    const base = projectPath || getProjectRootForWorkspace();
     const auditDir = resolve(base, '.ui-audit');
 
     await mkdir(auditDir, { recursive: true });
@@ -746,14 +710,26 @@ server.registerTool(
 server.registerTool(
   'write-metrics',
   {
-    description: 'Write computed metric values to the metrics CSV. Accepts a flat key-value object where keys match the dot-notation keys in Metrics.csv. Unrecognised keys are ignored.',
+    description:
+      'Write computed metric values to Metrics.csv—the same file `display-audit-dashboard` reads first. Path: `workspacePath` or `projectPath` when provided; otherwise `config.workspaceDir` (from `UI_AUDIT_PROJECT_ROOT` / `set-audit-workspace` / cwd). Flat key-value object; keys match dot-notation keys in the template. Unrecognised keys are ignored.',
     inputSchema: {
+      projectPath: z
+        .string()
+        .optional()
+        .describe(
+          'Absolute repo root containing `.ui-audit/`. Writes `<projectPath>/.ui-audit/Metrics.csv`. Use when MCP cwd is not the project.'
+        ),
+      workspacePath: z
+        .string()
+        .optional()
+        .describe(
+          'Absolute path to the folder containing Metrics.csv (the `.ui-audit` directory). Overrides `projectPath` when both are set.'
+        ),
       metrics: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).describe('Flat key-value object of computed metric values, e.g. { "metadata.projectName": "MyApp", "overallScores.uiQualityScore": 78.5 }.'),
     },
   },
-  async ({ metrics }) => {
-    const filename = config.templates['metrics'];
-    const filePath = resolve(config.workspaceDir, filename);
+  async ({ metrics, workspacePath, projectPath }) => {
+    const filePath = resolveWorkspaceMetricsCsvPath({ workspacePath, projectPath });
     let content;
     try {
       content = await readFile(filePath, 'utf-8');

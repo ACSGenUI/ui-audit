@@ -4,6 +4,7 @@
  * Host apps supply a declarative view model (layout + component bindings + resolved copy where needed).
  */
 import { ProgenCraftDesignSystem as DS } from '../design-system/progen-craft-design-system.js';
+import { parseJsonLayers } from '../../parse-json-layers.js';
 
 function readPayload() {
   if (
@@ -13,7 +14,21 @@ function readPayload() {
     return globalThis.__UI_AUDIT_DASHBOARD__;
   try {
     var raw = new URLSearchParams(globalThis.location.search).get("data");
-    if (raw) return JSON.parse(decodeURIComponent(raw));
+    if (raw) {
+      var v = JSON.parse(decodeURIComponent(raw));
+      v = parseJsonLayers(v);
+      if (v !== null && typeof v === "object" && !Array.isArray(v)) {
+        if (v.metrics != null && typeof v.metrics === "string") {
+          var inner = parseJsonLayers(v.metrics);
+          if (inner !== null && typeof inner === "object" && !Array.isArray(inner)) {
+            v = Object.assign({}, v, { metrics: inner });
+          } else {
+            return null;
+          }
+        }
+        return v;
+      }
+    }
   } catch (payloadParseError) {
     /* ignore */
   }

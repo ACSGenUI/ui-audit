@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "description": "MCP server for Code Audit and Browser Audit",
   "type": "module",
+  "files": [
+    "src",
+    "templates",
+    "dist"
+  ],
   "bin": {
     "ui-audit-mcp-server": "src/mcp-stdio.js"
   },
