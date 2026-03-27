@@ -4,7 +4,7 @@
       "command": "node",
       "args": ["<PATH_TO_UI_AUDIT>/src/mcp-stdio.js"],
       "env": {
-        "MCP_DRY_RUN": "false"
+        "UI_AUDIT_PROJECT_ROOT": "<PATH_TO_AUDITED_PROJECT_REPO>"
       }
     }
   }
