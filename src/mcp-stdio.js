@@ -12,7 +12,10 @@ import { readFileSync } from 'fs';
 import { readFile, writeFile, copyFile, access, mkdir, readdir, unlink } from 'fs/promises';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
-import config from './config.js';
+import config, {
+  getProjectRootForWorkspace,
+  resolveWorkspaceMetricsCsvPath,
+} from './config.js';
 import { computeAllMetrics } from './metrics-engine.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -156,6 +159,7 @@ function resolveDashboardPayloadFromMetricsJson(metricsJson) {
 
 /**
  * Read flat metrics from workspace Metrics.csv (key,value rows). Returns null if missing/unreadable/empty keys.
+ * Pass `getWorkspaceMetricsCsvPath()` so reads match `write-metrics` and `CsvManager` metrics paths.
  * @param {string} metricsCsvPath
  * @returns {Promise<Record<string, string> | null>}
  */
@@ -182,11 +186,13 @@ async function tryLoadMetricsFromMetricsCsv(metricsCsvPath) {
 /**
  * Dashboard data source: workspace Metrics.csv first, then metricsJson, then default-audit-metrics.json.
  * @param {string | undefined} metricsJson
+ * @param {{ workspacePath?: string, projectPath?: string } | undefined} metricsCsvOverrides - Same semantics as `write-metrics` / `compute-metrics` paths.
  * @returns {Promise<{ payload: object, usedDefaultMetrics: boolean, jsonInvalid: boolean, dataSource: 'csv' | 'json' | 'default' }>}
  */
-async function resolveDashboardPayloadForDisplay(metricsJson) {
-  const csvPath = resolve(config.workspaceDir, config.templates['metrics']);
-  const fromCsv = await tryLoadMetricsFromMetricsCsv(csvPath);
+async function resolveDashboardPayloadForDisplay(metricsJson, metricsCsvOverrides) {
+  const fromCsv = await tryLoadMetricsFromMetricsCsv(
+    resolveWorkspaceMetricsCsvPath(metricsCsvOverrides)
+  );
   if (fromCsv !== null) {
     return {
       payload: {
@@ -624,20 +630,33 @@ registerAppTool(
   {
     title: 'Audit dashboard',
     description:
-      'Opens the Audit MCP App (ui://…/audit-dashboard.html). Data source order: (1) If `.ui-audit/Metrics.csv` exists in the server workspace (current working directory) and parses successfully, its key/value rows drive the dashboard (metricsJson is ignored). (2) Else optional `metricsJson` — flat EDS-style metric key-values or a full dashboard payload with a `metrics` object (same shape as write-metrics / compute-metrics). (3) Else built-in sample metrics (default-audit-metrics.json). Invalid JSON in step 2 falls back to step 3.',
+      'Opens the Audit MCP App (ui://…/audit-dashboard.html). Data source order: (1) Metrics.csv from the resolved audit path (see `projectPath` / `workspacePath`; else `UI_AUDIT_PROJECT_ROOT` env + `.ui-audit/`, else `set-audit-workspace` target, else `process.cwd()` + `.ui-audit/`). If that file parses successfully, its rows drive the dashboard (metricsJson ignored). (2) Else `metricsJson`. (3) Else built-in sample metrics. Invalid JSON in step 2 falls back to step 3.',
     inputSchema: {
+      projectPath: z
+        .string()
+        .optional()
+        .describe(
+          'Absolute path to the project repo root containing `.ui-audit/`. Use when the MCP process cwd is not the repo (e.g. Cursor). Metrics.csv is read from `<projectPath>/.ui-audit/Metrics.csv`. Omit if `UI_AUDIT_PROJECT_ROOT` or `set-audit-workspace` already points at this project.'
+        ),
+      workspacePath: z
+        .string()
+        .optional()
+        .describe(
+          'Absolute path to the audit folder that **contains** Metrics.csv (usually `<repo>/.ui-audit`). Overrides `projectPath` when both are set. Same meaning as `compute-metrics` workspacePath.'
+        ),
       metricsJson: z
         .string()
         .optional()
         .describe(
-          'Optional JSON string used only when `.ui-audit/Metrics.csv` is missing or unreadable: (1) flat metrics object, or (2) dashboard payload with a `metrics` object. Omit or "" for built-in sample metrics in that case. Malformed JSON uses defaults.'
+          'Optional JSON string used only when Metrics.csv is missing or unreadable at the resolved path: (1) flat metrics object, or (2) dashboard payload with a `metrics` object. Omit or "" for built-in sample metrics in that case. Malformed JSON uses defaults.'
         ),
     },
     _meta: { ui: { resourceUri: AUDIT_DASHBOARD_URI } },
   },
   async (args) => {
     const { payload, usedDefaultMetrics, jsonInvalid, dataSource } = await resolveDashboardPayloadForDisplay(
-      args?.metricsJson
+      args?.metricsJson,
+      { workspacePath: args?.workspacePath, projectPath: args?.projectPath }
     );
     const dataJson = JSON.stringify(payload);
     const dataEnc = encodeURIComponent(dataJson);
@@ -676,11 +695,16 @@ server.registerTool(
     description: 'Set the project being audited. Creates a .ui-audit/ folder, copies the relevant checklist, and redirects all read/write to it. Call this FIRST.',
     inputSchema: {
       templateName: z.enum(['code-audit', 'browser-audit', 'manual-audit', 'metrics']).describe('Which audit is being run: "code-audit", "browser-audit", "manual-audit", or "metrics".'),
-      projectPath: z.string().optional().describe('Absolute path to the project repo. Omit to use the current working directory.'),
+      projectPath: z
+        .string()
+        .optional()
+        .describe(
+          'Absolute path to the project repo. Omit to use `UI_AUDIT_PROJECT_ROOT` / `MCP_UI_AUDIT_PROJECT_ROOT` if set, otherwise `process.cwd()`.'
+        ),
     },
   },
   async ({ templateName, projectPath }) => {
-    const base = projectPath || process.cwd();
+    const base = projectPath || getProjectRootForWorkspace();
     const auditDir = resolve(base, '.ui-audit');
 
     await mkdir(auditDir, { recursive: true });
@@ -822,14 +846,26 @@ server.registerTool(
 server.registerTool(
   'write-metrics',
   {
-    description: 'Write computed metric values to the metrics CSV. Accepts a flat key-value object where keys match the dot-notation keys in Metrics.csv. Unrecognised keys are ignored.',
+    description:
+      'Write computed metric values to Metrics.csv—the same file `display-audit-dashboard` reads first. Path: `workspacePath` or `projectPath` when provided; otherwise `config.workspaceDir` (from `UI_AUDIT_PROJECT_ROOT` / `set-audit-workspace` / cwd). Flat key-value object; keys match dot-notation keys in the template. Unrecognised keys are ignored.',
     inputSchema: {
+      projectPath: z
+        .string()
+        .optional()
+        .describe(
+          'Absolute repo root containing `.ui-audit/`. Writes `<projectPath>/.ui-audit/Metrics.csv`. Use when MCP cwd is not the project.'
+        ),
+      workspacePath: z
+        .string()
+        .optional()
+        .describe(
+          'Absolute path to the folder containing Metrics.csv (the `.ui-audit` directory). Overrides `projectPath` when both are set.'
+        ),
       metrics: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).describe('Flat key-value object of computed metric values, e.g. { "metadata.projectName": "MyApp", "overallScores.uiQualityScore": 78.5 }.'),
     },
   },
-  async ({ metrics }) => {
-    const filename = config.templates['metrics'];
-    const filePath = resolve(config.workspaceDir, filename);
+  async ({ metrics, workspacePath, projectPath }) => {
+    const filePath = resolveWorkspaceMetricsCsvPath({ workspacePath, projectPath });
     let content;
     try {
       content = await readFile(filePath, 'utf-8');
