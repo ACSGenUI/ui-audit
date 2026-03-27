@@ -824,7 +824,7 @@ function computeGranularMetrics(codeRows, browserRows, manualRows) {
  * @param {Object[]} codeRows    - Rows from Code Audit checklist
  * @param {Object[]} browserRows - Rows from Browser Audit checklist
  * @param {Object[]} manualRows  - Rows from Manual Checklist
- * @param {Object}   metadata    - { projectName, appUrl, repoUrl, auditorName, auditDate, auditVersion }
+ * @param {Object}   metadata    - { projectName, appUrl, repoUrl, auditorName, auditDate, auditVersion, projectType, projectManager, architectLead, currentPhase }
  * @returns {Record<string, string>} Flat key-value object matching Metrics.csv keys
  */
 export function computeAllMetrics(codeRows, browserRows, manualRows, metadata = {}) {
@@ -849,6 +849,10 @@ export function computeAllMetrics(codeRows, browserRows, manualRows, metadata = 
   m['metadata.auditDate'] = metadata.auditDate || new Date().toISOString().split('T')[0];
   m['metadata.auditorName'] = metadata.auditorName || '';
   m['metadata.auditVersion'] = metadata.auditVersion || '2.0.0';
+  m['metadata.projectType'] = metadata.projectType || '';
+  m['metadata.projectManager'] = metadata.projectManager || '';
+  m['metadata.architectLead'] = metadata.architectLead || '';
+  m['metadata.currentPhase'] = metadata.currentPhase || '';
 
   // Summary counts
   Object.assign(m, computeSummary(codeRows, browserRows, manualRows));

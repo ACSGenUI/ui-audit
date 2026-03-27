@@ -418,9 +418,13 @@ server.registerPrompt(
 > 1. Project name:
 > 2. App URL (the URL audited in the Browser Audit, or leave blank):
 > 3. Auditor name (or leave blank):
-> 4. Path to filled Code Audit CSV (or leave blank to auto-detect from .ui-audit/):
-> 5. Path to filled Browser Audit CSV (or leave blank to auto-detect from .ui-audit/):
-> 6. Path to filled Manual Checklist CSV (or leave blank to auto-detect from .ui-audit/):
+> 4. Project type — one of: **New Build**, **Migration**, **Enhancement**, **Revamp** (or leave blank):
+> 5. Project manager (or leave blank):
+> 6. Architect / lead (or leave blank):
+> 7. Current phase — one of: **Discovery**, **Design**, **Development**, **Testing**, **Go-Live** (or leave blank):
+> 8. Path to filled Code Audit CSV (or leave blank to auto-detect from .ui-audit/):
+> 9. Path to filled Browser Audit CSV (or leave blank to auto-detect from .ui-audit/):
+> 10. Path to filled Manual Checklist CSV (or leave blank to auto-detect from .ui-audit/):
 
 Wait for their response. Then proceed with the full workflow below without any further pauses or questions.
 
@@ -444,6 +448,10 @@ Do NOT pause, ask questions, or wait for user input at any point after receiving
    - \`appUrl\`: from user answer (or "")
    - \`repoUrl\`: from the git command above (or "")
    - \`auditorName\`: from user answer (or "")
+   - \`projectType\`: from user answer — New Build | Migration | Enhancement | Revamp (or "")
+   - \`projectManager\`: from user answer (or "")
+   - \`architectLead\`: from user answer (or "")
+   - \`currentPhase\`: from user answer — Discovery | Design | Development | Testing | Go-Live (or "")
    - \`codeAuditPath\`: from user answer (omit if blank — tool auto-detects from .ui-audit/)
    - \`browserAuditPath\`: from user answer (omit if blank — tool auto-detects from .ui-audit/)
    - \`manualAuditPath\`: from user answer (omit if blank — tool auto-detects from .ui-audit/)
@@ -756,13 +764,41 @@ server.registerTool(
       repoUrl: z.string().optional().describe('Git remote URL. Auto-derived if omitted.'),
       auditorName: z.string().optional().describe('Name of the auditor.'),
       auditDate: z.string().optional().describe('ISO date string. Defaults to today.'),
+      projectType: z
+        .string()
+        .optional()
+        .describe(
+          'Project type: New Build, Migration, Enhancement, or Revamp (free text; stored in metadata.projectType).'
+        ),
+      projectManager: z.string().optional().describe('Project manager name (metadata.projectManager).'),
+      architectLead: z.string().optional().describe('Architect or technical lead (metadata.architectLead).'),
+      currentPhase: z
+        .string()
+        .optional()
+        .describe(
+          'Current delivery phase: Discovery, Design, Development, Testing, or Go-Live (free text; metadata.currentPhase).'
+        ),
       workspacePath: z.string().optional().describe('Absolute path to directory containing filled checklist CSVs. Defaults to .ui-audit/ workspace.'),
       codeAuditPath: z.string().optional().describe('Absolute path to a filled Code Audit CSV. Overrides workspace lookup for code-audit.'),
       browserAuditPath: z.string().optional().describe('Absolute path to a filled Browser Audit CSV. Overrides workspace lookup for browser-audit.'),
       manualAuditPath: z.string().optional().describe('Absolute path to a filled Manual Checklist CSV. Overrides workspace lookup for manual-audit.'),
     },
   },
-  async ({ projectName, appUrl, repoUrl, auditorName, auditDate, workspacePath, codeAuditPath, browserAuditPath, manualAuditPath }) => {
+  async ({
+    projectName,
+    appUrl,
+    repoUrl,
+    auditorName,
+    auditDate,
+    projectType,
+    projectManager,
+    architectLead,
+    currentPhase,
+    workspacePath,
+    codeAuditPath,
+    browserAuditPath,
+    manualAuditPath,
+  }) => {
     const { parse: csvParse } = await import('csv-parse/sync');
     const warnings = [];
     const baseDir = workspacePath || config.workspaceDir;
@@ -818,6 +854,10 @@ server.registerTool(
       repoUrl: repoUrl || '',
       auditorName: auditorName || '',
       auditDate: auditDate || '',
+      projectType: projectType || '',
+      projectManager: projectManager || '',
+      architectLead: architectLead || '',
+      currentPhase: currentPhase || '',
     });
 
     return {

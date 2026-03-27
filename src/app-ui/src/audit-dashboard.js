@@ -743,7 +743,12 @@ export const THEME_STORAGE_KEY = "ui-audit-theme";
     var gl = normalizeGoLiveReady(goRaw);
     if (goliveWrap && goliveBadge) {
       if (gl === "Yes" || gl === "No") {
-        goliveBadge.textContent = t("audit.goLiveBadge", { answer: gl === "Yes" ? "YES" : "NO" });
+        goliveBadge.textContent = t("audit.goLiveBadge", {
+          answer:
+            gl === "Yes"
+              ? t("audit.goLiveStatusLaunchReady")
+              : t("audit.goLiveStatusControlledLaunch"),
+        });
         goliveBadge.className = "audit-rag audit-rag--" + (gl === "Yes" ? "green" : "red");
         goliveBadge.setAttribute("aria-label", goliveBadge.textContent);
         goliveWrap.hidden = false;
@@ -791,6 +796,9 @@ export const THEME_STORAGE_KEY = "ui-audit-theme";
     if (isAuditFieldEmpty(b.auditTimestamp) && (v = pickMetricFirst(f, ["metadata.auditTimestamp", "metadata.auditDate"])) != null) {
       b.auditTimestamp = String(v);
     }
+    if (isAuditFieldEmpty(b.auditDate) && (v = pickMetric(f, "metadata.auditDate")) != null) {
+      b.auditDate = String(v);
+    }
     if (isAuditFieldEmpty(b.ragRating) && (v = pickMetricFirst(f, ["overallStatus.ragRating", "status.ragRating"])) != null) {
       var normRag = normalizeRagRating(String(v));
       b.ragRating = normRag || String(v);
@@ -835,6 +843,24 @@ export const THEME_STORAGE_KEY = "ui-audit-theme";
     }
     if (isAuditFieldEmpty(p.projectName) && pickMetric(f, "metadata.projectName") != null) {
       p.projectName = String(pickMetric(f, "metadata.projectName"));
+    }
+    if (isAuditFieldEmpty(b.projectType) && (v = pickMetric(f, "metadata.projectType")) != null) {
+      b.projectType = String(v);
+    }
+    if (isAuditFieldEmpty(b.projectManager) && (v = pickMetric(f, "metadata.projectManager")) != null) {
+      b.projectManager = String(v);
+    }
+    if (isAuditFieldEmpty(b.architectLead) && (v = pickMetric(f, "metadata.architectLead")) != null) {
+      b.architectLead = String(v);
+    }
+    if (isAuditFieldEmpty(b.currentPhase) && (v = pickMetric(f, "metadata.currentPhase")) != null) {
+      b.currentPhase = String(v);
+    }
+    if (isAuditFieldEmpty(b.auditorName) && (v = pickMetric(f, "metadata.auditorName")) != null) {
+      b.auditorName = String(v);
+    }
+    if (isAuditFieldEmpty(b.auditVersion) && (v = pickMetric(f, "metadata.auditVersion")) != null) {
+      b.auditVersion = String(v);
     }
   }
 
@@ -968,6 +994,130 @@ export const THEME_STORAGE_KEY = "ui-audit-theme";
     return s;
   }
 
+  function appendBannerMetaKv(container, labelKey, value) {
+    if (!container || value == null || String(value).trim() === "") return false;
+    var row = document.createElement("div");
+    row.className = "audit-banner__meta-kv";
+    var lab = document.createElement("span");
+    lab.className = "audit-banner__meta-kv-label";
+    lab.textContent = t(labelKey) + ":";
+    var val = document.createElement("span");
+    val.className = "audit-banner__meta-kv-value";
+    val.textContent = String(value);
+    row.appendChild(lab);
+    row.appendChild(val);
+    container.appendChild(row);
+    return true;
+  }
+
+  function appendBannerMetaRepoRow(container, url) {
+    if (!container || url == null || String(url).trim() === "") return false;
+    var row = document.createElement("div");
+    row.className = "audit-banner__meta-kv audit-banner__meta-kv--url";
+    var lab = document.createElement("span");
+    lab.className = "audit-banner__meta-kv-label";
+    lab.textContent = t("audit.metaRepoUrl") + ":";
+    var val = document.createElement("span");
+    val.className = "audit-banner__meta-kv-value audit-banner__meta-kv-value--url";
+    var inner = document.createElement("span");
+    inner.className = "audit-banner__repo";
+    inner.textContent = String(url);
+    val.appendChild(inner);
+    row.appendChild(lab);
+    row.appendChild(val);
+    container.appendChild(row);
+    return true;
+  }
+
+  function appendBannerMetaSiteRow(container, url) {
+    if (!container || url == null || String(url).trim() === "") return false;
+    var row = document.createElement("div");
+    row.className = "audit-banner__meta-kv audit-banner__meta-kv--url";
+    var lab = document.createElement("span");
+    lab.className = "audit-banner__meta-kv-label";
+    lab.textContent = t("audit.metaSiteUrl") + ":";
+    var val = document.createElement("span");
+    val.className = "audit-banner__meta-kv-value audit-banner__meta-kv-value--url";
+    var link = document.createElement("a");
+    link.className = "audit-banner__link";
+    link.href = String(url);
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = String(url);
+    val.appendChild(link);
+    row.appendChild(lab);
+    row.appendChild(val);
+    container.appendChild(row);
+    return true;
+  }
+
+  var BANNER_META_RESERVED = {
+    projectName: 1,
+    repoUrl: 1,
+    appUrl: 1,
+    commitId: 1,
+    auditTimestamp: 1,
+    auditDate: 1,
+    projectType: 1,
+    projectManager: 1,
+    architectLead: 1,
+    currentPhase: 1,
+    auditorName: 1,
+    auditVersion: 1,
+  };
+
+  /**
+   * Two-column metadata: left — repo, site URL, commit, type, PM (+ extras); right — architect, phase, audit date, version, auditor.
+   * @returns {boolean} whether any cell was filled
+   */
+  function fillBannerMetaTwoColumns(leftEl, rightEl, o, metaMapForExtras) {
+    if (!leftEl || !rightEl) return false;
+    leftEl.innerHTML = "";
+    rightEl.innerHTML = "";
+    var has = false;
+    if (appendBannerMetaRepoRow(leftEl, o.repoUrl)) has = true;
+    if (appendBannerMetaSiteRow(leftEl, o.appUrl)) has = true;
+    if (o.commitId) {
+      has = true;
+      var commitLine = document.createElement("div");
+      commitLine.className = "audit-banner__commit-line";
+      commitLine.textContent = t("audit.commitLabel") + " " + shortCommitDisplay(o.commitId);
+      leftEl.appendChild(commitLine);
+    }
+    if (appendBannerMetaKv(leftEl, "audit.metaProjectType", o.projectType)) has = true;
+    if (appendBannerMetaKv(leftEl, "audit.metaProjectManager", o.projectManager)) has = true;
+
+    if (appendBannerMetaKv(rightEl, "audit.metaArchitectLead", o.architectLead)) has = true;
+    if (appendBannerMetaKv(rightEl, "audit.metaCurrentPhase", o.currentPhase)) has = true;
+    var dateStr =
+      o.auditDate != null && String(o.auditDate).trim() !== ""
+        ? String(o.auditDate)
+        : o.auditTimestamp != null && String(o.auditTimestamp).trim() !== ""
+          ? String(o.auditTimestamp)
+          : "";
+    if (appendBannerMetaKv(rightEl, "audit.metaAuditDate", dateStr)) has = true;
+    if (appendBannerMetaKv(rightEl, "audit.metaAuditVersion", o.auditVersion)) has = true;
+    if (appendBannerMetaKv(rightEl, "audit.metaAuditorName", o.auditorName)) has = true;
+
+    if (metaMapForExtras && typeof metaMapForExtras === "object") {
+      var M = window.AuditDashboardMetrics;
+      Object.keys(metaMapForExtras)
+        .sort()
+        .forEach(function (k) {
+          if (BANNER_META_RESERVED[k]) return;
+          var v = metaMapForExtras[k];
+          if (v == null || String(v).trim() === "") return;
+          has = true;
+          var extra = document.createElement("div");
+          extra.className = "audit-banner__meta-extra";
+          extra.textContent = (M && M.humanizeSegment ? M.humanizeSegment(k) : k) + ": " + String(v);
+          leftEl.appendChild(extra);
+        });
+    }
+
+    return has;
+  }
+
   function renderBannerFromFlatMetrics(flat, auditPayload) {
     var M = window.AuditDashboardMetrics;
     if (!M || !flat) return;
@@ -985,52 +1135,24 @@ export const THEME_STORAGE_KEY = "ui-audit-theme";
     if (titleEl) titleEl.textContent = fullTitle;
     if (drillProj) drillProj.textContent = fullTitle;
 
-    var metaRoot = document.getElementById("dash-audit-meta");
-    if (metaRoot) {
-      metaRoot.innerHTML = "";
-      metaRoot.hidden = true;
-      var hasMeta = false;
-      if (meta.repoUrl) {
-        hasMeta = true;
-        var repo = document.createElement("div");
-        repo.className = "audit-banner__repo";
-        repo.textContent = String(meta.repoUrl);
-        metaRoot.appendChild(repo);
-      }
-      if (meta.appUrl) {
-        hasMeta = true;
-        var link = document.createElement("a");
-        link.className = "audit-banner__link";
-        link.href = String(meta.appUrl);
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.textContent = String(meta.appUrl);
-        metaRoot.appendChild(link);
-      }
-      if (meta.commitId || meta.auditTimestamp) {
-        hasMeta = true;
-        var line = document.createElement("div");
-        line.className = "audit-banner__commit-line";
-        var parts = [];
-        if (meta.commitId) parts.push(t("audit.commitLabel") + " " + shortCommitDisplay(meta.commitId));
-        if (meta.auditTimestamp) {
-          parts.push(t("audit.generatedLabel") + " " + String(meta.auditTimestamp));
-        }
-        line.textContent = parts.join(" · ");
-        metaRoot.appendChild(line);
-      }
-      var reserved = { projectName: 1, repoUrl: 1, appUrl: 1, commitId: 1, auditTimestamp: 1 };
-      Object.keys(meta)
-        .sort()
-        .forEach(function (k) {
-          if (reserved[k]) return;
-          hasMeta = true;
-          var extra = document.createElement("div");
-          extra.className = "audit-banner__meta-extra";
-          extra.textContent = M.humanizeSegment(k) + ": " + String(meta[k]);
-          metaRoot.appendChild(extra);
-        });
-      metaRoot.hidden = !hasMeta;
+    var metaGrid = document.getElementById("dash-audit-meta");
+    var leftEl = document.getElementById("dash-audit-meta-left");
+    var rightEl = document.getElementById("dash-audit-meta-right");
+    if (metaGrid && leftEl && rightEl) {
+      var bundle = {
+        repoUrl: meta.repoUrl,
+        appUrl: meta.appUrl,
+        commitId: meta.commitId,
+        auditDate: meta.auditDate,
+        auditTimestamp: meta.auditTimestamp,
+        projectType: meta.projectType,
+        projectManager: meta.projectManager,
+        architectLead: meta.architectLead,
+        currentPhase: meta.currentPhase,
+        auditVersion: meta.auditVersion,
+        auditorName: meta.auditorName,
+      };
+      metaGrid.hidden = !fillBannerMetaTwoColumns(leftEl, rightEl, bundle, meta);
     }
 
     syncDashStatusBadges(flat, auditPayload && auditPayload.auditBanner);
@@ -1183,42 +1305,24 @@ export const THEME_STORAGE_KEY = "ui-audit-theme";
     if (titleEl) titleEl.textContent = fullTitle;
     if (drillProj) drillProj.textContent = fullTitle;
 
-    var metaRoot = document.getElementById("dash-audit-meta");
-
-    if (metaRoot) {
-      metaRoot.innerHTML = "";
-      metaRoot.hidden = true;
-      var hasMeta = false;
-      if (banner.repoUrl) {
-        hasMeta = true;
-        var repo = document.createElement("div");
-        repo.className = "audit-banner__repo";
-        repo.textContent = String(banner.repoUrl);
-        metaRoot.appendChild(repo);
-      }
-      if (banner.appUrl) {
-        hasMeta = true;
-        var link = document.createElement("a");
-        link.className = "audit-banner__link";
-        link.href = String(banner.appUrl);
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.textContent = String(banner.appUrl);
-        metaRoot.appendChild(link);
-      }
-      if (banner.commitId || banner.auditTimestamp) {
-        hasMeta = true;
-        var line = document.createElement("div");
-        line.className = "audit-banner__commit-line";
-        var parts = [];
-        if (banner.commitId) parts.push(t("audit.commitLabel") + " " + shortCommitDisplay(banner.commitId));
-        if (banner.auditTimestamp) {
-          parts.push(t("audit.generatedLabel") + " " + String(banner.auditTimestamp));
-        }
-        line.textContent = parts.join(" · ");
-        metaRoot.appendChild(line);
-      }
-      metaRoot.hidden = !hasMeta;
+    var metaGrid = document.getElementById("dash-audit-meta");
+    var leftEl = document.getElementById("dash-audit-meta-left");
+    var rightEl = document.getElementById("dash-audit-meta-right");
+    if (metaGrid && leftEl && rightEl) {
+      var legacyBundle = {
+        repoUrl: banner.repoUrl,
+        appUrl: banner.appUrl,
+        commitId: banner.commitId,
+        auditDate: banner.auditDate,
+        auditTimestamp: banner.auditTimestamp,
+        projectType: banner.projectType,
+        projectManager: banner.projectManager,
+        architectLead: banner.architectLead,
+        currentPhase: banner.currentPhase,
+        auditVersion: banner.auditVersion,
+        auditorName: banner.auditorName,
+      };
+      metaGrid.hidden = !fillBannerMetaTwoColumns(leftEl, rightEl, legacyBundle, null);
     }
 
     syncDashStatusBadges(null, banner);
