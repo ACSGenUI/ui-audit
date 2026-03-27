@@ -5,6 +5,24 @@
  */
 import { ProgenCraftDesignSystem as DS } from '../design-system/progen-craft-design-system.js';
 
+/** Unwrap JSON values that were stringified multiple times (e.g. `JSON.stringify(JSON.stringify(obj))`). */
+function parseJsonLayers(value, maxDepth) {
+  var limit = maxDepth == null ? 12 : maxDepth;
+  var v = value;
+  var depth = 0;
+  while (depth < limit && typeof v === "string") {
+    var t = v.trim();
+    if (t === "") return null;
+    try {
+      v = JSON.parse(t);
+      depth += 1;
+    } catch (parseLayerError) {
+      return null;
+    }
+  }
+  return v;
+}
+
 function readPayload() {
   if (
     typeof globalThis.__UI_AUDIT_DASHBOARD__ === "object" &&
@@ -13,7 +31,21 @@ function readPayload() {
     return globalThis.__UI_AUDIT_DASHBOARD__;
   try {
     var raw = new URLSearchParams(globalThis.location.search).get("data");
-    if (raw) return JSON.parse(decodeURIComponent(raw));
+    if (raw) {
+      var v = JSON.parse(decodeURIComponent(raw));
+      v = parseJsonLayers(v);
+      if (v !== null && typeof v === "object" && !Array.isArray(v)) {
+        if (v.metrics != null && typeof v.metrics === "string") {
+          var inner = parseJsonLayers(v.metrics);
+          if (inner !== null && typeof inner === "object" && !Array.isArray(inner)) {
+            v = Object.assign({}, v, { metrics: inner });
+          } else {
+            return null;
+          }
+        }
+        return v;
+      }
+    }
   } catch (payloadParseError) {
     /* ignore */
   }

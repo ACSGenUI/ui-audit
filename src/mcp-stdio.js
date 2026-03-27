@@ -12,7 +12,10 @@ import { readFileSync } from 'fs';
 import { readFile, writeFile, copyFile, access, mkdir, readdir, unlink } from 'fs/promises';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
-import config from './config.js';
+import config, {
+  getProjectRootForWorkspace,
+  resolveWorkspaceMetricsCsvPath,
+} from './config.js';
 import { computeAllMetrics } from './metrics-engine.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -38,15 +41,43 @@ async function readMcpDashboardHtml() {
   }
 }
 
+/** Repeatedly JSON.parse while the value is a non-empty string (double-encoded JSON from clients). */
+function parseJsonLayers(value, maxDepth = 12) {
+  let v = value;
+  let depth = 0;
+  while (depth < maxDepth && typeof v === 'string') {
+    const t = v.trim();
+    if (t === '') return null;
+    try {
+      v = JSON.parse(t);
+      depth += 1;
+    } catch {
+      return null;
+    }
+  }
+  return v;
+}
+
 async function buildAuditDashboardContents(uri, variables) {
   let html = await readMcpDashboardHtml();
   const raw = variables?.data ?? uri.searchParams.get('data');
   let tailScripts = '';
   if (raw) {
     try {
-      const parsed = JSON.parse(decodeURIComponent(raw));
-      const safe = JSON.stringify(parsed).replace(/</g, '\\u003c');
-      tailScripts = `<script>window.__UI_AUDIT_DASHBOARD__=${safe};</script>`;
+      let v = JSON.parse(decodeURIComponent(raw));
+      v = parseJsonLayers(v);
+      if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+        if (v.metrics != null && typeof v.metrics === 'string') {
+          const inner = parseJsonLayers(v.metrics);
+          if (inner !== null && typeof inner === 'object' && !Array.isArray(inner)) {
+            v = { ...v, metrics: inner };
+          } else {
+            throw new Error('invalid stringified metrics');
+          }
+        }
+        const safe = JSON.stringify(v).replace(/</g, '\\u003c');
+        tailScripts = `<script>window.__UI_AUDIT_DASHBOARD__=${safe};</script>`;
+      }
     } catch {
       /* ignore invalid data param */
     }
@@ -88,15 +119,19 @@ function resolveDashboardPayloadFromMetricsJson(metricsJson) {
     return { payload: defaultPayload, usedDefaultMetrics: true, jsonInvalid: false };
   }
 
-  let parsed;
-  try {
-    parsed = JSON.parse(trimmed);
-  } catch {
+  const parsedRoot = parseJsonLayers(trimmed);
+  if (parsedRoot === null || typeof parsedRoot !== 'object' || Array.isArray(parsedRoot)) {
     return { payload: defaultPayload, usedDefaultMetrics: true, jsonInvalid: true };
   }
 
-  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return { payload: defaultPayload, usedDefaultMetrics: true, jsonInvalid: true };
+  let parsed = parsedRoot;
+  if (parsed.metrics != null && typeof parsed.metrics === 'string') {
+    const inner = parseJsonLayers(parsed.metrics);
+    if (inner !== null && typeof inner === 'object' && !Array.isArray(inner)) {
+      parsed = { ...parsed, metrics: inner };
+    } else {
+      return { payload: defaultPayload, usedDefaultMetrics: true, jsonInvalid: true };
+    }
   }
 
   if (parsed.metrics != null && typeof parsed.metrics === 'object' && !Array.isArray(parsed.metrics)) {
@@ -119,6 +154,62 @@ function resolveDashboardPayloadFromMetricsJson(metricsJson) {
     },
     usedDefaultMetrics: false,
     jsonInvalid: false,
+  };
+}
+
+/**
+ * Read flat metrics from workspace Metrics.csv (key,value rows). Returns null if missing/unreadable/empty keys.
+ * Pass `getWorkspaceMetricsCsvPath()` so reads match `write-metrics` and `CsvManager` metrics paths.
+ * @param {string} metricsCsvPath
+ * @returns {Promise<Record<string, string> | null>}
+ */
+async function tryLoadMetricsFromMetricsCsv(metricsCsvPath) {
+  try {
+    const content = await readFile(metricsCsvPath, 'utf-8');
+    const clean = content.replace(/^\uFEFF/, '');
+    const { parse: csvParse } = await import('csv-parse/sync');
+    const records = csvParse(clean, { columns: true, skip_empty_lines: true, bom: true });
+    const metrics = {};
+    for (const row of records) {
+      const key = row['key'];
+      if (key == null || String(key).trim() === '') continue;
+      const val = row['value'];
+      metrics[String(key).trim()] = val == null ? '' : String(val);
+    }
+    if (Object.keys(metrics).length === 0) return null;
+    return metrics;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Dashboard data source: workspace Metrics.csv first, then metricsJson, then default-audit-metrics.json.
+ * @param {string | undefined} metricsJson
+ * @param {{ workspacePath?: string, projectPath?: string } | undefined} metricsCsvOverrides - Same semantics as `write-metrics` / `compute-metrics` paths.
+ * @returns {Promise<{ payload: object, usedDefaultMetrics: boolean, jsonInvalid: boolean, dataSource: 'csv' | 'json' | 'default' }>}
+ */
+async function resolveDashboardPayloadForDisplay(metricsJson, metricsCsvOverrides) {
+  const fromCsv = await tryLoadMetricsFromMetricsCsv(
+    resolveWorkspaceMetricsCsvPath(metricsCsvOverrides)
+  );
+  if (fromCsv !== null) {
+    return {
+      payload: {
+        projectName: projectNameFromMetrics(fromCsv),
+        metrics: fromCsv,
+      },
+      usedDefaultMetrics: false,
+      jsonInvalid: false,
+      dataSource: 'csv',
+    };
+  }
+  const fromJson = resolveDashboardPayloadFromMetricsJson(metricsJson);
+  return {
+    payload: fromJson.payload,
+    usedDefaultMetrics: fromJson.usedDefaultMetrics,
+    jsonInvalid: fromJson.jsonInvalid,
+    dataSource: fromJson.usedDefaultMetrics ? 'default' : 'json',
   };
 }
 
@@ -539,30 +630,47 @@ registerAppTool(
   {
     title: 'Audit dashboard',
     description:
-      'Opens the Audit MCP App (ui://…/audit-dashboard.html). Optional argument: metricsJson — a JSON string of flat EDS-style metric key-values (same shape as write-metrics / compute-metrics output), or a full dashboard payload object that includes a `metrics` object. Omit or pass empty string to use the server default metrics (default-audit-metrics.json). Invalid JSON falls back to those defaults.',
+      'Opens the Audit MCP App (ui://…/audit-dashboard.html). Data source order: (1) Metrics.csv from the resolved audit path (see `projectPath` / `workspacePath`; else `UI_AUDIT_PROJECT_ROOT` env + `.ui-audit/`, else `set-audit-workspace` target, else `process.cwd()` + `.ui-audit/`). If that file parses successfully, its rows drive the dashboard (metricsJson ignored). (2) Else `metricsJson`. (3) Else built-in sample metrics. Invalid JSON in step 2 falls back to step 3.',
     inputSchema: {
+      projectPath: z
+        .string()
+        .optional()
+        .describe(
+          'Absolute path to the project repo root containing `.ui-audit/`. Use when the MCP process cwd is not the repo (e.g. Cursor). Metrics.csv is read from `<projectPath>/.ui-audit/Metrics.csv`. Omit if `UI_AUDIT_PROJECT_ROOT` or `set-audit-workspace` already points at this project.'
+        ),
+      workspacePath: z
+        .string()
+        .optional()
+        .describe(
+          'Absolute path to the audit folder that **contains** Metrics.csv (usually `<repo>/.ui-audit`). Overrides `projectPath` when both are set. Same meaning as `compute-metrics` workspacePath.'
+        ),
       metricsJson: z
         .string()
         .optional()
         .describe(
-          'Optional JSON string: either (1) flat metrics object with keys like metadata.projectName, summary.*, overallScores.*, or (2) a dashboard payload including a `metrics` object (and optional projectName, domains, locale, etc.). Omit or "" for built-in sample metrics. Malformed JSON uses defaults.'
+          'Optional JSON string used only when Metrics.csv is missing or unreadable at the resolved path: (1) flat metrics object, or (2) dashboard payload with a `metrics` object. Omit or "" for built-in sample metrics in that case. Malformed JSON uses defaults.'
         ),
     },
     _meta: { ui: { resourceUri: AUDIT_DASHBOARD_URI } },
   },
   async (args) => {
-    const { payload, usedDefaultMetrics, jsonInvalid } = resolveDashboardPayloadFromMetricsJson(args?.metricsJson);
+    const { payload, usedDefaultMetrics, jsonInvalid, dataSource } = await resolveDashboardPayloadForDisplay(
+      args?.metricsJson,
+      { workspacePath: args?.workspacePath, projectPath: args?.projectPath }
+    );
     const dataJson = JSON.stringify(payload);
     const dataEnc = encodeURIComponent(dataJson);
     const resourceWithData =
       dataJson.length < 6000 ? `${AUDIT_DASHBOARD_URI}?data=${dataEnc}` : AUDIT_DASHBOARD_URI;
 
     const hint =
-      jsonInvalid
-        ? ' Invalid metricsJson — using default-audit-metrics.json.'
-        : usedDefaultMetrics
-          ? ' Using default sample metrics.'
-          : '';
+      dataSource === 'csv'
+        ? ' Loaded from .ui-audit/Metrics.csv (metricsJson ignored if present).'
+        : jsonInvalid
+          ? ' Invalid metricsJson — using default-audit-metrics.json.'
+          : usedDefaultMetrics
+            ? ' Using default sample metrics (no Metrics.csv; empty or omitted metricsJson).'
+            : '';
 
     return {
       content: [
@@ -587,11 +695,16 @@ server.registerTool(
     description: 'Set the project being audited. Creates a .ui-audit/ folder, copies the relevant checklist, and redirects all read/write to it. Call this FIRST.',
     inputSchema: {
       templateName: z.enum(['code-audit', 'browser-audit', 'manual-audit', 'metrics']).describe('Which audit is being run: "code-audit", "browser-audit", "manual-audit", or "metrics".'),
-      projectPath: z.string().optional().describe('Absolute path to the project repo. Omit to use the current working directory.'),
+      projectPath: z
+        .string()
+        .optional()
+        .describe(
+          'Absolute path to the project repo. Omit to use `UI_AUDIT_PROJECT_ROOT` / `MCP_UI_AUDIT_PROJECT_ROOT` if set, otherwise `process.cwd()`.'
+        ),
     },
   },
   async ({ templateName, projectPath }) => {
-    const base = projectPath || process.cwd();
+    const base = projectPath || getProjectRootForWorkspace();
     const auditDir = resolve(base, '.ui-audit');
 
     await mkdir(auditDir, { recursive: true });
@@ -733,14 +846,26 @@ server.registerTool(
 server.registerTool(
   'write-metrics',
   {
-    description: 'Write computed metric values to the metrics CSV. Accepts a flat key-value object where keys match the dot-notation keys in Metrics.csv. Unrecognised keys are ignored.',
+    description:
+      'Write computed metric values to Metrics.csv—the same file `display-audit-dashboard` reads first. Path: `workspacePath` or `projectPath` when provided; otherwise `config.workspaceDir` (from `UI_AUDIT_PROJECT_ROOT` / `set-audit-workspace` / cwd). Flat key-value object; keys match dot-notation keys in the template. Unrecognised keys are ignored.',
     inputSchema: {
+      projectPath: z
+        .string()
+        .optional()
+        .describe(
+          'Absolute repo root containing `.ui-audit/`. Writes `<projectPath>/.ui-audit/Metrics.csv`. Use when MCP cwd is not the project.'
+        ),
+      workspacePath: z
+        .string()
+        .optional()
+        .describe(
+          'Absolute path to the folder containing Metrics.csv (the `.ui-audit` directory). Overrides `projectPath` when both are set.'
+        ),
       metrics: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).describe('Flat key-value object of computed metric values, e.g. { "metadata.projectName": "MyApp", "overallScores.uiQualityScore": 78.5 }.'),
     },
   },
-  async ({ metrics }) => {
-    const filename = config.templates['metrics'];
-    const filePath = resolve(config.workspaceDir, filename);
+  async ({ metrics, workspacePath, projectPath }) => {
+    const filePath = resolveWorkspaceMetricsCsvPath({ workspacePath, projectPath });
     let content;
     try {
       content = await readFile(filePath, 'utf-8');
