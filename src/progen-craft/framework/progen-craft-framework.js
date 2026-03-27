@@ -4,7 +4,7 @@
  * Host apps supply a declarative view model (layout + component bindings + resolved copy where needed).
  */
 import { ProgenCraftDesignSystem as DS } from '../design-system/progen-craft-design-system.js';
-import { parseJsonLayers } from '../../utils/parse-json-layers.js';
+import { parseJsonLayers } from '../../parse-json-layers.js';
 
 function readPayload() {
   if (

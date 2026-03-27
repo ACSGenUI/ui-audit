@@ -15,7 +15,7 @@ import {
   applyHostStyleVariables,
 } from "@modelcontextprotocol/ext-apps";
 import { THEME_STORAGE_KEY } from "./audit-dashboard.js";
-import { parseJsonLayers } from "../../utils/parse-json-layers.js";
+import { parseJsonLayers } from "../../parse-json-layers.js";
 
 const DASHBOARD_FALLBACK_PROJECT = "Example Project Audit Report";
 

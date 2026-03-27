@@ -17,7 +17,7 @@ import config, {
   resolveWorkspaceMetricsCsvPath,
 } from './config.js';
 import { computeAllMetrics } from './metrics-engine.js';
-import { parseJsonLayers } from './utils/parse-json-layers.js';
+import { parseJsonLayers } from './parse-json-layers.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
