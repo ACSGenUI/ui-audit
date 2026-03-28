@@ -402,7 +402,7 @@ Do not ask follow-up questions unless the user's request was ambiguous about whi
 );
 
 server.registerPrompt(
-  'start-metrics-generation',
+  'generate-report',
   {
     description: 'Generate a full Metrics report from completed Code Audit, Browser Audit, and Manual Checklist results. Asks for project metadata before beginning.',
   },
