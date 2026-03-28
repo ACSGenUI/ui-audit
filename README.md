@@ -94,7 +94,7 @@ Prompts are registered with the server. In clients that support **MCP prompts**,
 |-------------|---------|
 | **`start-code-audit`** | Run a full **Code Audit** in one pass: `set-audit-workspace` → `download-template` → loop `read-checklist-row` / `run-local-audit` / `write-checklist-row` until no pending rows → `cleanup-workspace`. Uses local shell inspection (grep, files, linters)—**no browser**. |
 | **`start-browser-audit`** | Run a full **Browser Audit**: asks for the **App URL**, then same checklist loop pattern using **Chrome DevTools MCP** (or equivalent) for page inspection—not `run-local-audit` for browser rows. |
-| **`start-metrics-generation`** | **Recommended** full metrics flow: asks for project metadata and optional CSV paths, then `compute-metrics` (all three checklists server-side) → `write-metrics` → `display-audit-dashboard` → `cleanup-workspace`. |
+| **`generate-report`** | **Recommended** full metrics flow: asks for project metadata and optional CSV paths, then `compute-metrics` (all three checklists server-side) → `write-metrics` → `display-audit-dashboard` → `cleanup-workspace`. |
 | **`show-audit-dashboard`** | Tells the agent to call **`display-audit-dashboard`** and to open the MCP App resource; optional `metricsJson` or rely on **`Metrics.csv`** when present (see tool description). |
 
 ---
