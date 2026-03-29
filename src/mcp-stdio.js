@@ -16,6 +16,7 @@ import config, {
   getProjectRootForWorkspace,
   resolveWorkspaceMetricsCsvPath,
 } from './config.js';
+import { assertAllowedReadPath, assertAllowedWritePath, isPathInsideSandbox } from './path-guard.js';
 import { computeAllMetrics } from './metrics-engine.js';
 import { parseJsonLayers } from './parse-json-layers.js';
 
@@ -148,6 +149,8 @@ function resolveDashboardPayloadFromMetricsJson(metricsJson) {
  * @returns {Promise<Record<string, string> | null>}
  */
 async function tryLoadMetricsFromMetricsCsv(metricsCsvPath) {
+  const pathCheck = assertAllowedReadPath(metricsCsvPath);
+  if (!pathCheck.ok) return null;
   try {
     const content = await readFile(metricsCsvPath, 'utf-8');
     const clean = content.replace(/^\uFEFF/, '');
@@ -513,6 +516,27 @@ registerAppTool(
     _meta: { ui: { resourceUri: AUDIT_DASHBOARD_URI } },
   },
   async (args) => {
+    if (args?.workspacePath || args?.projectPath) {
+      const metricsCsvPath = resolveWorkspaceMetricsCsvPath({
+        workspacePath: args?.workspacePath,
+        projectPath: args?.projectPath,
+      });
+      const pathCheck = assertAllowedReadPath(metricsCsvPath);
+      if (!pathCheck.ok) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                ok: false,
+                error: pathCheck.error,
+                message: pathCheck.message,
+              }),
+            },
+          ],
+        };
+      }
+    }
     const { payload, usedDefaultMetrics, jsonInvalid, dataSource } = await resolveDashboardPayloadForDisplay(
       args?.metricsJson,
       { workspacePath: args?.workspacePath, projectPath: args?.projectPath }
@@ -563,7 +587,22 @@ server.registerTool(
     },
   },
   async ({ templateName, projectPath }) => {
-    const base = projectPath || getProjectRootForWorkspace();
+    const base = projectPath ? resolve(String(projectPath).trim()) : getProjectRootForWorkspace();
+    if (!isPathInsideSandbox(base)) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              ok: false,
+              error: 'PATH_NOT_ALLOWED',
+              message:
+                'projectPath must be under the trusted project root (same as UI_AUDIT_PROJECT_ROOT / cwd when the server started).',
+            }),
+          },
+        ],
+      };
+    }
     const auditDir = resolve(base, '.ui-audit');
 
     await mkdir(auditDir, { recursive: true });
@@ -725,6 +764,21 @@ server.registerTool(
   },
   async ({ metrics, workspacePath, projectPath }) => {
     const filePath = resolveWorkspaceMetricsCsvPath({ workspacePath, projectPath });
+    const writeCheck = assertAllowedWritePath(filePath);
+    if (!writeCheck.ok) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              ok: false,
+              error: writeCheck.error,
+              message: writeCheck.message,
+            }),
+          },
+        ],
+      };
+    }
     let content;
     try {
       content = await readFile(filePath, 'utf-8');
@@ -801,7 +855,52 @@ server.registerTool(
   }) => {
     const { parse: csvParse } = await import('csv-parse/sync');
     const warnings = [];
-    const baseDir = workspacePath || config.workspaceDir;
+    const baseDir =
+      workspacePath != null && String(workspacePath).trim() !== ''
+        ? resolve(String(workspacePath).trim())
+        : config.workspaceDir;
+    const baseCheck = assertAllowedReadPath(baseDir);
+    if (!baseCheck.ok) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              ok: false,
+              error: baseCheck.error,
+              message: baseCheck.message,
+            }),
+          },
+        ],
+      };
+    }
+
+    for (const [param, p] of [
+      ['codeAuditPath', codeAuditPath],
+      ['browserAuditPath', browserAuditPath],
+      ['manualAuditPath', manualAuditPath],
+    ]) {
+      if (p != null && String(p).trim() !== '') {
+        const abs = resolve(String(p).trim());
+        const explicitCheck = assertAllowedReadPath(abs);
+        if (!explicitCheck.ok) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  ok: false,
+                  error: explicitCheck.error,
+                  message: explicitCheck.message,
+                  param,
+                  path: abs,
+                }),
+              },
+            ],
+          };
+        }
+      }
+    }
 
     const loadCsv = async (filePath) => {
       const content = await readFile(filePath, 'utf-8');
@@ -813,8 +912,9 @@ server.registerTool(
     const loadChecklist = async (templateName, explicitPath) => {
       // If an explicit path is provided, use it directly
       if (explicitPath) {
+        const absExplicit = resolve(String(explicitPath).trim());
         try {
-          const rows = await loadCsv(explicitPath);
+          const rows = await loadCsv(absExplicit);
           return rows;
         } catch (e) {
           warnings.push(`${templateName}: explicit path ${explicitPath} failed — ${e.message}`);
@@ -904,9 +1004,14 @@ server.registerTool(
 server.registerTool(
   'run-local-audit',
   {
-    description: 'Run a read-only shell command against the project repo (grep, cat, eslint, etc). Returns stdout and stderr.',
+    description:
+      'Run a single allowlisted CLI (no shell): grep/rg/cat/head/tail/git/eslint/node/find/etc. No pipes (|), &&, ;, or subshells. cwd must stay under the trusted project root.',
     inputSchema: {
-      command: z.string().describe('Shell command to run.'),
+      command: z
+        .string()
+        .describe(
+          'Single command with optional quoted arguments only (e.g. grep -r pattern .). Shell operators and pipes are rejected.'
+        ),
       cwd: z.string().optional().describe('Absolute path to the project being audited. Defaults to the audit workspace.'),
       timeoutMs: z.number().optional().describe('Max execution time in milliseconds. Defaults to 60000.'),
     },

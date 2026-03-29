@@ -885,6 +885,33 @@ export const THEME_STORAGE_KEY = "ui-audit-theme";
     return Math.abs(n % 1) < 1e-9 ? String(Math.round(n)) : String(Math.round(n * 10) / 10);
   }
 
+  /** Allow only safe CSS background values; ignore attacker-controlled strings from payloads. */
+  function safeDomainIconBackground(val, fallback) {
+    if (val == null || val === "") return fallback;
+    var s = String(val).trim();
+    if (s.length > 180) return fallback;
+    if (/^var\(--[a-zA-Z0-9_-]+\)$/.test(s)) return s;
+    if (/^#[0-9a-fA-F]{3,8}$/i.test(s)) return s;
+    if (/^rgba?\([^)]{0,120}\)$/i.test(s)) return s;
+    return fallback;
+  }
+
+  /** Minimal SVG allowlisting; drop anything with script, event handlers, or external refs. */
+  function sanitizeDomainIconSvg(svg) {
+    if (svg == null || typeof svg !== "string") return null;
+    var s = svg.trim();
+    if (!s || s.length > 20000) return null;
+    if (!/^<svg[\s>]/i.test(s)) return null;
+    if (
+      /<\s*script|on\w+\s*=|<\s*iframe|<\s*foreignobject|\bjavascript:|href\s*=\s*["']?\s*javascript:/i.test(
+        s
+      )
+    ) {
+      return null;
+    }
+    return s;
+  }
+
   function deriveEdsDomainsFromMetrics(p) {
     if (!p || !p.metrics || typeof p.metrics !== "object" || p.ignoreMetricsDomains === true) return;
     var f = p.metrics;
@@ -1266,11 +1293,17 @@ export const THEME_STORAGE_KEY = "ui-audit-theme";
         var displayTitle = domain.title || t("domain.fallbackName");
         row.setAttribute("aria-label", t("domain.openDetails", { name: displayTitle }));
         row.innerHTML =
-          '<div class="icon-box" style="background:' +
-          (domain.iconBg || palette[domainIndex % palette.length]) +
-          '">' +
-          (domain.iconSvg || '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/></svg>') +
-          '</div><div class="row-body"><div class="row-head"><div class="row-titles"><div class="row-title"></div><div class="row-sub"></div></div><div class="row-value"></div></div><div class="row-progress"><div class="row-progress-meta"><span class="row-passed-total"></span><span class="row-progress-hint"></span></div><div class="row-progress-bar"><div class="row-progress-fill"></div></div></div></div>';
+          '<div class="icon-box"></div><div class="row-body"><div class="row-head"><div class="row-titles"><div class="row-title"></div><div class="row-sub"></div></div><div class="row-value"></div></div><div class="row-progress"><div class="row-progress-meta"><span class="row-passed-total"></span><span class="row-progress-hint"></span></div><div class="row-progress-bar"><div class="row-progress-fill"></div></div></div></div>';
+        var iconBox = row.querySelector(".icon-box");
+        if (iconBox) {
+          iconBox.style.background = safeDomainIconBackground(
+            domain.iconBg,
+            palette[domainIndex % palette.length]
+          );
+          var safeSvg = sanitizeDomainIconSvg(domain.iconSvg);
+          iconBox.innerHTML =
+            safeSvg || '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/></svg>';
+        }
         row.querySelector(".row-title").textContent = domain.title || "";
         row.querySelector(".row-sub").textContent = domain.subtitle || "";
         row.querySelector(".row-value").textContent = domain.value != null ? String(domain.value) : "";
