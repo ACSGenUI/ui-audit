@@ -26,6 +26,7 @@ const config = {
     'browser-audit': 'Browser_Audit_Checklist.csv',
     'manual-audit': 'Manual_Checklist.csv',
     'metrics': 'Metrics.csv',
+    'dashboard': 'dashboard.html',
   },
   allowedWriteColumns: ['Implemented? (Yes / No)', 'Comments', 'Evidence'],
   metricsValueColumn: 'value',
