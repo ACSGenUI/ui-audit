@@ -457,18 +457,19 @@ Do NOT pause, ask questions, or wait for user input at any point after receiving
    - \`manualAuditPath\`: from user answer (omit if blank — tool auto-detects from .ui-audit/)
    This tool reads all three checklists (code-audit, browser-audit, manual-audit) automatically, computes every metric (summaries, domain scores, weighted overall score, granular per-item values, risk index, RAG status, top issues, components requiring attention), and returns the full flat key-value object. When explicit paths are provided, those files are used directly; otherwise, the tool looks in .ui-audit/ then falls back to the templates directory. Missing audit files are skipped gracefully.
 
-### Step 3 — Write metrics
+### Step 3 — Write metrics and download dashboard
 5. Extract the \`metrics\` object from the \`compute-metrics\` response.
 6. \`write-metrics\` with the \`metrics\` object — writes all values to the Metrics CSV.
+7. \`download-template\` with \`templateName: "dashboard"\` — copies the standalone \`dashboard.html\` into the same \`.ui-audit/\` folder. The user can open this file in a browser alongside the CSVs to view their report.
 
 ### Step 4 — Show audit dashboard
-7. Call \`display-audit-dashboard\` with \`metricsJson: JSON.stringify(metrics)\` where \`metrics\` is the flat key-value object from \`compute-metrics\`.
+8. Call \`display-audit-dashboard\` with \`metricsJson: JSON.stringify(metrics)\` where \`metrics\` is the flat key-value object from \`compute-metrics\`.
 
 ### Step 5 — Cleanup
-8. \`cleanup-workspace\` — removes any auto-generated JSON, MD, and Python files, keeping only CSVs.
+9. \`cleanup-workspace\` — removes any auto-generated JSON, MD, and Python files, keeping only CSVs and HTML.
 
 ### Step 6 — Report
-9. Print a concise summary table: RAG rating, go-live readiness, overall score, all 17 domain scores with their risk ratings, criticalFailed count, mandatoryFailed count, totalBlockingIssues, and the path to the generated metrics file.
+10. Print a concise summary table: RAG rating, go-live readiness, overall score, all 17 domain scores with their risk ratings, criticalFailed count, mandatoryFailed count, totalBlockingIssues, and the path to the generated metrics file and dashboard HTML.
 
 ## Rules
 - Do NOT manually compute metrics — \`compute-metrics\` handles all computation server-side.
@@ -588,9 +589,9 @@ server.registerTool(
 server.registerTool(
   'download-template',
   {
-    description: 'Copy a fresh checklist from templates into the workspace, overwriting any existing file. Returns path, columns, and row count.',
+    description: 'Copy a fresh template from templates into the workspace, overwriting any existing file. For CSV templates returns path, columns, and row count; for "dashboard" returns the output path.',
     inputSchema: {
-      templateName: z.enum(['code-audit', 'browser-audit', 'manual-audit', 'metrics']).describe('Which template to download: "code-audit", "browser-audit", "manual-audit", or "metrics".'),
+      templateName: z.enum(['code-audit', 'browser-audit', 'manual-audit', 'metrics', 'dashboard']).describe('Which template to download: "code-audit", "browser-audit", "manual-audit", "metrics", or "dashboard".'),
     },
   },
   async ({ templateName }) => {
@@ -598,6 +599,9 @@ server.registerTool(
     const src = resolve(config.templatesDir, filename);
     const dest = resolve(config.workspaceDir, filename);
     await copyFile(src, dest);
+    if (templateName === 'dashboard') {
+      return { content: [{ type: 'text', text: JSON.stringify({ ok: true, template: templateName, path: dest }) }] };
+    }
     const result = await csvManager.download(templateName);
     return { content: [{ type: 'text', text: JSON.stringify(result) }] };
   }
